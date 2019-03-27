@@ -5,7 +5,7 @@ from torch.nn import init
 from rnn import lstm_encoder
 from rnn import MultiLayerLSTMCells
 from attention import step_attention
-from utils import sequence_mean, len_mask, change_shape, change_reshape
+from utils import sequence_mean, len_mask, change_shape, change_reshape, change_reshape_decoder
 
 from torch.nn import functional as F
 from utils import reorder_sequence, reorder_lstm_states
@@ -83,7 +83,7 @@ class HierarchicalSumm(nn.Module):
         sent_dec_out, sent_h_out, sent_c_out, decoder_len = self._Seq2SeqSumm.batch_decode(article_hidden_states, article_lens, max_sent)
 
         #快乐继续换格式
-        sent_output = change_reshape([sent_dec_out, sent_h_out, sent_c_out], decoder_len)
+        sent_output = change_reshape_decoder([sent_dec_out, sent_h_out, sent_c_out], decoder_len)
         sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
 
         init_states = (torch.unsqueeze(sentence_hidden_states, 0).contiguous(),
@@ -96,7 +96,6 @@ class HierarchicalSumm(nn.Module):
         for i in range(max_words):
             logit, states = self._SentToWordLSTM._step(tok, states)
             tok = torch.max(logit, dim=1, keepdim=True)[1]  #挣扎一下维度对不对
-            print(tok.size())
             if (i == 0): 
                 outputs = torch.unsqueeze(tok[:,0] , 1)
             else:

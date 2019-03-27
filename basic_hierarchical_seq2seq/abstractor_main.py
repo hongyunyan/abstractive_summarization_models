@@ -212,10 +212,10 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, action='store', default=64,
                         help='the training batch size')
     parser.add_argument(
-        '--ckpt_freq', type=int, action='store', default=10000,
+        '--ckpt_freq', type=int, action='store', default=1000,
         help='number of update steps for checkpoint and validation'
     )
-    parser.add_argument('--patience', type=int, action='store', default=5,
+    parser.add_argument('--patience', type=int, action='store', default=10,
                         help='patience for early stopping')
 
     parser.add_argument('--debug', action='store_true',

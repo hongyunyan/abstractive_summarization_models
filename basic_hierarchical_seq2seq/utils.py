@@ -2,7 +2,7 @@ import math
 import sys
 import torch
 from torch.nn import functional as F
-
+import time
 
 """ utility functions"""
 import re
@@ -12,7 +12,7 @@ from os.path import basename
 import gensim
 import torch
 from torch import nn
-from torch.nn.utils.rnn import pad_packed_sequence, PackedSequence
+from torch.nn.utils.rnn import pad_packed_sequence, PackedSequence, pack_padded_sequence
 
 def count_data(path):
     """ count number of data in the given path"""
@@ -152,13 +152,20 @@ def change_shape(input, input_lens, pad):
 def change_reshape(input, input_lens):
     #三维矩阵转为二维矩阵
     output = [None] * len(input)
-    
-    # for index in range(len(input)): 苟不过去好气！明天看看怎么苟过去
-    #     print(input[index].size())
-    #     print(input_lens)
-    #     print(input[index].transpose(0,1))
-    #     output[index] = pack_padded_sequence(input[index].transpose(0,1), input_lens).data
-    #     print(output[index])
+    # print(time.time()) 问题太多了，还有不按序列的问题，到时候测出来如果是bottle neck再考虑改
+    # sort_ind = sorted(range(len(input_lens)),
+    #                  key=lambda i: input_lens[i], reverse=True)
+    # input_lens_new = [input_lens[i] for i in sort_ind] #再度排序
+    # input_new = reorder_sequence(input, sort_ind)
+
+    # input_lens_trans = []
+    # for i in range(max(input_lens)):
+    #     input_lens_trans.append(sum(j > i for j in input_lens))
+    # output = [None] * len(input)
+    # for index in range(len(input)): 
+    #     output[index] = pack_padded_sequence(input[index].permute(1,0,2).transpose(0,1), input_lens_trans).data
+
+    # print(time.time())
     for i in range(len(input_lens)):
         for j in range(input_lens[i]):
             if (i==0 and j==0):
@@ -167,5 +174,20 @@ def change_reshape(input, input_lens):
             else:
                 for index in range(len(input)):
                     output[index] = torch.cat((output[index], torch.unsqueeze(input[index][i][j], 0)), dim=0)
-    
+
+    return output
+
+def change_reshape_decoder(input, input_lens):
+    #三维矩阵转为二维矩阵
+    output = [None] * len(input)
+
+    for i in range(len(input_lens)):
+        for j in range(input_lens[i]):
+            if (i==0 and j==0):
+                for index in range(len(input)):
+                    output[index] = torch.unsqueeze(input[index][j][i], 0)
+            else:
+                for index in range(len(input)):
+                    output[index] = torch.cat((output[index], torch.unsqueeze(input[index][j][i], 0)), dim=0)
+
     return output

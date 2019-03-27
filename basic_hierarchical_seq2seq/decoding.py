@@ -67,6 +67,7 @@ class Abstractor(object):
     def _prepro(self, raw_article_sents):
 
         articles = conver2id(UNK, self._word2id, raw_article_sents)
+        articles.sort(key=lambda data:len(data), reverse=True)
         article_lens = [len(art) for art in articles]
 
         art_sents = []
@@ -127,37 +128,6 @@ def _process_beam(id2word, beam, art_sent):
         del hyp.attns
         return hyp
     return list(map(process_hyp, beam))
-
-
-class Extractor(object):
-    def __init__(self, ext_dir, max_ext=5, cuda=True):
-        ext_meta = json.load(open(join(ext_dir, 'meta.json')))
-        if ext_meta['net'] == 'ml_ff_extractor':
-            ext_cls = ExtractSumm
-        elif ext_meta['net'] == 'ml_rnn_extractor':
-            ext_cls = PtrExtractSumm
-        else:
-            raise ValueError()
-        ext_ckpt = load_best_ckpt(ext_dir)
-        ext_args = ext_meta['net_args']
-        extractor = ext_cls(**ext_args)
-        extractor.load_state_dict(ext_ckpt)
-        word2id = pkl.load(open(join(ext_dir, 'vocab.pkl'), 'rb'))
-        self._device = torch.device('cuda' if cuda else 'cpu')
-        self._net = extractor.to(self._device)
-        self._word2id = word2id
-        self._id2word = {i: w for w, i in word2id.items()}
-        self._max_ext = max_ext
-
-    def __call__(self, raw_article_sents):
-        self._net.eval()
-        n_art = len(raw_article_sents)
-        articles = conver2id(UNK, self._word2id, raw_article_sents)
-        article = pad_batch_tensorize(articles, PAD, cuda=False
-                                     ).to(self._device)
-        indices = self._net.extract([article], k=min(n_art, self._max_ext))
-        return indices
-
 
 class ArticleBatcher(object):
     def __init__(self, word2id, cuda=True):

@@ -44,6 +44,8 @@ def decode(save_path, model_dir, data_path, split, batch_size,
         dataset, batch_size=batch_size, shuffle=False, num_workers=4,
         collate_fn=coll
     )
+    
+    os.makedirs(join(save_path, 'output'))
 
     # Decoding
     i = 0
@@ -58,10 +60,13 @@ def decode(save_path, model_dir, data_path, split, batch_size,
                 dec_outs = rerank_mp(all_beams, ext_inds)
             else:
                 dec_outs = abstractor(tokenized_article_batch)
-            assert i == batch_size*i_debug
+            # assert i == batch_size*i_debug
 
             for dec_out in dec_outs:
                 decoded_sents = [' '.join(dec_out)]
+                with open(join(save_path, 'output/{}.dec'.format(i)),'w') as f:
+                    f.write(make_html_safe('\n'.join(decoded_sents)))
+                i += 1
                 print(decoded_sents)
             # for j, n in ext_inds:
             #     decoded_sents = [' '.join(dec) for dec in dec_outs[j:j+n]]
