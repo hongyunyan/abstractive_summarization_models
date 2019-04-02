@@ -44,7 +44,7 @@ def val_step(loss_step, fw_args, loss_args):
 
 @curry
 def basic_validate(net, criterion, val_batches):
-    print('running validation ... ', end='')
+    print('running validation ... ')
     net.eval()
     start = time()
     with torch.no_grad():
@@ -171,7 +171,7 @@ class BasicTrainer(object):
         print('train step: {}, {}: {:.4f}\r'.format(
             self._step,
             'loss' if 'loss' in log_dict else 'reward',
-            self._running_loss), end='')
+            self._running_loss))
         for key, value in log_dict.items():
             self._logger.add_scalar(
                 '{}_{}'.format(key, self._pipeline.name), value, self._step)

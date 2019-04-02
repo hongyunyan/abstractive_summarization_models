@@ -27,6 +27,7 @@ PAD = 0
 UNK = 1
 START = 2
 END = 3
+EOA = 4 #end of article
 #返回一个dict,key为word,value为序号
 def make_vocab(wc, vocab_size):
     word2id, id2word = {}, {}
@@ -34,7 +35,8 @@ def make_vocab(wc, vocab_size):
     word2id['<unk>'] = UNK
     word2id['<start>'] = START
     word2id['<end>'] = END
-    for i, (w, _) in enumerate(wc.most_common(vocab_size), 4):  #most_common 返回一个list, list包含每个word和出现次数对 ,enumerate的第二个参数用来明确start iterator for index
+    word2id['<eoa>'] = EOA
+    for i, (w, _) in enumerate(wc.most_common(vocab_size), 5):  #most_common 返回一个list, list包含每个word和出现次数对 ,enumerate的第二个参数用来明确start iterator for index
         word2id[w] = i
     return word2id
 

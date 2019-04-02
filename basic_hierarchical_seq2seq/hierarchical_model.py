@@ -10,6 +10,7 @@ from utils import sequence_mean, len_mask, change_shape, change_reshape, change_
 from torch.nn import functional as F
 from utils import reorder_sequence, reorder_lstm_states
 
+from utils import EOA
 from seq2seq import Seq2SeqSumm
 
 
@@ -109,6 +110,8 @@ class HierarchicalSumm(nn.Module):
             sent_num = sent_num + decoder_len[i]
             article = []
             for sent in sents:
+                if (sent[0] == EOA):
+                    break
                 sent_ids = []
                 for word in sent:
                     sent_ids.append(word.item())

@@ -22,7 +22,7 @@ from batcher import convert_batch, batchify_fn
 from batcher import BucketedGenerater
 
 from utils import sequence_loss
-from utils import PAD, UNK, START, END
+from utils import PAD, UNK, START, END, EOA
 from utils import make_vocab, make_embedding
 
 from hierarchical_model import HierarchicalSumm
@@ -84,7 +84,7 @@ def configure_training(opt, lr, clip_grad, lr_decay, batch_size):
 def build_batchers(word2id, cuda, debug):
     prepro = prepro_fn(args.max_art, args.max_abs)
     batchify = compose(
-        batchify_fn(PAD, START, END, cuda=cuda),
+        batchify_fn(PAD, START, END, EOA, cuda=cuda),
         convert_batch(UNK, word2id)
     )  #这玩意竟然是倒着开始执行的？？？？？？
 
@@ -209,7 +209,7 @@ if __name__ == '__main__':
                         help='patience for learning rate decay')
     parser.add_argument('--clip', type=float, action='store', default=2.0,
                         help='gradient clipping')
-    parser.add_argument('--batch', type=int, action='store', default=64,
+    parser.add_argument('--batch', type=int, action='store', default=16,
                         help='the training batch size')
     parser.add_argument(
         '--ckpt_freq', type=int, action='store', default=1000,

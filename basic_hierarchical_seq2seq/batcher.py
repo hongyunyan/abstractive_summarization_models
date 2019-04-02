@@ -72,32 +72,41 @@ def pad_batch_tensorize(inputs, pad, cuda=True):
 
 
 @curry
-def batchify_fn(pad, start, end, data, cuda=True):
+def batchify_fn(pad, start, end, eoa, data, cuda=True):
     #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
+
     data.sort(key=lambda data:len(data[0]), reverse=True)
     sources, targets = tuple(map(list, unzip(data)))
 
     source_article_len = [len(source) for source in sources]
-    target_article_len = [len(target) for target in targets]
+    target_article_len = [len(target) + 1 for target in targets]
 
     source_sent = [] 
     for source in sources:
         for src in source:
             source_sent.append(src)
 
-    target_sent = []
+    src_sent_len = [len(src) for src in source_sent]
+
+    tar_ins = []
+    tar_outs = []
     for target in targets:
         for tar in target:
-            target_sent.append(tar)
-
-    src_sent_len = [len(src) for src in source_sent]
+            tar_ins.append([start] + tar)
+            tar_outs.append(tar + [end])
+        tar_ins.append([start])
+        tar_outs.append([eoa])
     
-    tar_ins = [[start] + tgt for tgt in target_sent]
-    targets = [tgt + [end] for tgt in target_sent]
+    
+    # tar_ins = [[start] + tgt for tgt in target_sent]
+    # #增加一个生成END的start句子输入
+    # tar_ins.append([[start]])
+    # targets = [tgt + [end] for tgt in target_sent]
+    # targets.append([[eoa]])
 
     source = pad_batch_tensorize(source_sent, pad, cuda)
     tar_in = pad_batch_tensorize(tar_ins, pad, cuda)
-    target = pad_batch_tensorize(targets, pad, cuda)
+    target = pad_batch_tensorize(tar_outs, pad, cuda)
 
     fw_args = (source, source_article_len, src_sent_len, tar_in, target_article_len)
     loss_args = (target, )
