@@ -21,8 +21,6 @@ torch 1.0.0+
 
 目前为乞丐版，beam search还没填上，attention还没加好，参数都是裸的，真乞丐版
 
-而且大数据下还要爆表ram和cuda，真一脸懵逼
-
 ----
 
 
