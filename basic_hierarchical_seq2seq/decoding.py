@@ -81,7 +81,7 @@ class Abstractor(object):
                                      ).to(self._device)
         
         #art_sents 是一个每个文章所有sents凑在一起的矩阵，sent_lens是每个句子的长度，article_lens是每个文章有多少个句子
-        dec_args = (art_sents, article_lens, sent_lens, START, END, self._max_sents, self._max_words)
+        dec_args = (art_sents, article_lens, sent_lens, START, self._max_sents, self._max_words)
         return dec_args
 
     def __call__(self, raw_article_sents):
@@ -107,12 +107,24 @@ class Abstractor(object):
 class BeamAbstractor(Abstractor):
     def __call__(self, raw_article_sents, beam_size=5, diverse=1.0):
         self._net.eval()
-        dec_args, id2word = self._prepro(raw_article_sents)
-        dec_args = (*dec_args, beam_size, diverse)
-        all_beams = self._net.batched_beamsearch(*dec_args)
-        all_beams = list(starmap(_process_beam(id2word),
-                                 zip(all_beams, raw_article_sents)))
-        return all_beams
+        dec_args = self._prepro(raw_article_sents)
+        dec_args = (*dec_args, END, beam_size, diverse)
+        decs = self._net.batched_beam_search(*dec_args)
+        # all_beams = list(starmap(_process_beam(self._id2word),
+        #                          zip(all_beams, raw_article_sents)))
+        dec_sents = []
+        for i, raw_words in enumerate(raw_article_sents):
+            abstract = []
+            for sent in decs[i]:
+                abs_sent = []
+                for id_ in sent:
+                    if id_ == END:
+                        continue
+                    else:
+                        abs_sent.append(self._id2word[id_])
+                abstract.append(abs_sent)
+            dec_sents.append(abstract)
+        return dec_sents
 
 @curry
 def _process_beam(id2word, beam, art_sent):

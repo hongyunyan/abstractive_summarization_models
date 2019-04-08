@@ -14,6 +14,7 @@ from utils import reorder_sequence, reorder_lstm_states
 
 from utils import EOA
 from seq2seq import Seq2SeqSumm
+import beamsearch as bs
 
 
 INIT = 1e-2
@@ -66,7 +67,7 @@ class HierarchicalSumm(nn.Module):
         return logit
     
     
-    def batch_decode(self, article_sents, article_lens, sent_lens, start, eos, max_sent, max_words):
+    def batch_decode(self, article_sents, article_lens, sent_lens, start, max_sent, max_words):
         """ greedy decode support batching"""
         words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
 
@@ -122,86 +123,53 @@ class HierarchicalSumm(nn.Module):
         return articles_output
 
     def batched_beam_search(self, article_sents, article_lens, sent_lens,
-                            go, eos, unk, max_len, beam_size, diverse=1.0):
+                            start, max_sent, max_words, eos, beam_size, diverse=1.0):
 
         words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
-        
+
         #抄换转格式！到时候给我苟回去！
         if self._bidirectional:
             hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
 
         hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
         hidden_states = hidden_states[-1]
-        pad = torch.ones(self._n_hidden) * 1e-8  #用来填充没有句子的地方的hidden
 
-        max_sent_num = max(article_lens)
-        #先生成一个文章数×文章最多的句子数的矩阵
-        
-        article_hidden_states = None
-        count = 0
-        for i in range(len(article_lens)):
-            for j in range(article_lens[i]):
-                if (i==0 and j==0):
-                    article_hidden_states = torch.unsqueeze(hidden_states[count], 0)
-                else:
-                    article_hidden_states = torch.cat((article_hidden_states, torch.unsqueeze(hidden_states[count], 0)), dim=0)
-                count += 1
-            for k in range(max_sent_num - article_lens[i]):
-                article_hidden_states = torch.cat((article_hidden_states, torch.unsqueeze(pad, 0)), dim=0)
-        
-        article_hidden_states = article_hidden_states.reshape(len(article_lens), max_sent_num, hidden_states.size()[1])
+        pad = 1e-8  #用来填充没有句子的地方的hidden
 
-        #seq2seq
-        sent_dec_out, sent_h_out, sent_c_out = self._Seq2SeqSumm(article_hidden_states, article_lens, abs_lens)
+        article_hidden_states = change_shape(hidden_states, article_lens, pad)
+
+        #这边要改成encoder和decoder分离，先让已知的数据穿过seq2seq的encoder然后获得参数开始decoder 句子vec，然后再用句子vec decoder出sent vec
+        #或者这边应该调用seq2seq的beam_decoder函数，让他自己decoder好返回给我下一步decoder的参数
+        sent_dec_out, sent_h_out, sent_c_out, decoder_len = self._Seq2SeqSumm.batch_decode(article_hidden_states, article_lens, max_sent)
 
         #快乐继续换格式
-        sentence_output_states = None
-        sentence_hidden_states = None
-        sentence_context_states = None
-
-        for i in range(len(abs_lens)):
-            for j in range(abs_lens[i]):
-                if (i==0 and j==0):
-                    sentence_output_states = torch.unsqueeze(sent_dec_out[i][j], 0)
-                    sentence_hidden_states = torch.unsqueeze(sent_h_out[i][j], 0)
-                    sentence_context_states = torch.unsqueeze(sent_c_out[i][j], 0)
-                else:
-                    sentence_output_states = torch.cat((sentence_output_states, torch.unsqueeze(sent_dec_out[i][j], 0)), dim=0)
-                    sentence_hidden_states = torch.cat((sentence_hidden_states, torch.unsqueeze(sent_h_out[i][j], 0)), dim=0)
-                    sentence_context_states = torch.cat((sentence_context_states, torch.unsqueeze(sent_c_out[i][j], 0)), dim=0)   #苟完了
-
-        init_states = (torch.unsqueeze(sentence_hidden_states, 0).contiguous(),
-                       torch.unsqueeze(sentence_context_states, 0).contiguous())
-        states = init_states, sentence_output_states
+        sent_output = change_reshape_decoder([sent_dec_out, sent_h_out, sent_c_out], decoder_len)
+        sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
 
         batch_size = sentence_output_states.size()[0]
-        tok = torch.LongTensor([go]*batch_size).to(article.device) 
 
+        h = sentence_hidden_states.unsqueeze(0)
+        c = sentence_context_states.unsqueeze(0)
+        prev = sentence_output_states
 
-
-        batch_size = len(art_lens)
-        vsize = self._embedding.num_embeddings
-
-        (h, c), prev = init_dec_states
-        all_beams = [bs.init_beam(go, (h[:, i, :], c[:, i, :], prev[i]))
-                     for i in range(batch_size)]
+        all_beams = [bs.init_beam(start, (h[:, i, :], c[:, i, :], prev[i])) for i in range(batch_size)]
         finished_beams = [[] for _ in range(batch_size)]
         outputs = [None for _ in range(batch_size)]
-        for t in range(max_len):
+        for t in range(max_words):
             toks = []
             all_states = []
             for beam in filter(bool, all_beams):
-                token, states = bs.pack_beam(beam, article.device)
+                token, states = bs.pack_beam(beam)
                 toks.append(token)
                 all_states.append(states)
             token = torch.stack(toks, dim=1)
             states = ((torch.stack([h for (h, _), _ in all_states], dim=2),
                        torch.stack([c for (_, c), _ in all_states], dim=2)),
-                      torch.stack([prev for _, prev in all_states], dim=1))
-            token.masked_fill_(token >= vsize, unk)
+                       torch.stack([prev for _, prev in all_states], dim=1))
+            # token.masked_fill_(token >= vsize, unk)
+            
+            topk, k_logit, states = self._SentToWordLSTM.topk_step(token, states, beam_size)
 
-            topk, lp, states, attn_score = self._decoder.topk_step(
-                token, states, attention, beam_size)
 
             batch_i = 0
             for i, (beam, finished) in enumerate(zip(all_beams,
@@ -209,46 +177,45 @@ class HierarchicalSumm(nn.Module):
                 if not beam:
                     continue
                 finished, new_beam = bs.next_search_beam(
-                    beam, beam_size, finished, eos,
-                    topk[:, batch_i, :], lp[:, batch_i, :],
+                    beam, beam_size, finished, eos, EOA, 
+                    topk[:, batch_i, :], k_logit[:, batch_i, :],
                     (states[0][0][:, :, batch_i, :],
                      states[0][1][:, :, batch_i, :],
-                     states[1][:, batch_i, :]),
-                    attn_score[:, batch_i, :],
-                    diverse
+                     states[1][:, batch_i, :])
                 )
                 batch_i += 1
                 if len(finished) >= beam_size:
                     all_beams[i] = []
                     outputs[i] = finished[:beam_size]
-                    # exclude finished inputs
-                    (attention, mask, extend_art, extend_vsize
-                    ) = all_attention
-                    masks = [mask[j] for j, o in enumerate(outputs)
-                             if o is None]
-                    ind = [j for j, o in enumerate(outputs) if o is None]
-                    ind = torch.LongTensor(ind).to(attention.device)
-                    attention, extend_art = map(
-                        lambda v: v.index_select(dim=0, index=ind),
-                        [attention, extend_art]
-                    )
-                    if masks:
-                        mask = torch.stack(masks, dim=0)
-                    else:
-                        mask = None
-                    attention = (
-                        attention, mask, extend_art, extend_vsize)
                 else:
                     all_beams[i] = new_beam
                     finished_beams[i] = finished
             if all(outputs):
                 break
         else:
-            for i, (o, f, b) in enumerate(zip(outputs,
-                                              finished_beams, all_beams)):
+            for i, (o, f, b) in enumerate(zip(outputs, finished_beams, all_beams)):
                 if o is None:
                     outputs[i] = (f+b)[:beam_size]
-        return outputs
+
+        #这个神奇的output里面有finish的beam size的结果
+
+        articles_output = []
+        sent_num = 0
+        for i in range(len(decoder_len)):
+            sents = outputs[sent_num: sent_num + decoder_len[i]]
+            sent_num = sent_num + decoder_len[i]
+            article = []
+            for sent in sents:
+                if (sent[0].sequence[0] == EOA):
+                    break
+                sent_ids = []
+                for word in sent[0].sequence:
+                    sent_ids.append(word)
+                article.append(sent_ids)
+            articles_output.append(article)
+
+
+        return articles_output
 
 
 class SentToWordLSTM(nn.Module):
@@ -312,6 +279,33 @@ class SentToWordLSTM(nn.Module):
         logit = torch.log(F.softmax(logit, dim=-1) + 1e-8)
         
         return logit, (states, dec_out)
+
+    def topk_step(self, tok, states, beam_size):
+        """tok:[BB, B], states ([L, BB, B, D]*2, [BB, B, D])"""
+        (h, c), prev_out = states
+
+        # lstm is not bemable
+        nl, _, _, d = h.size()
+        beam, batch = tok.size()
+        lstm_in_beamable = torch.cat(
+            [self._embedding(tok), prev_out], dim=-1)
+        lstm_in = lstm_in_beamable.contiguous().view(beam*batch, -1)
+        prev_states = (h.contiguous().view(nl, -1, d),
+                       c.contiguous().view(nl, -1, d))
+        h, c = self._dec_lstm(lstm_in, prev_states)
+        states = (h.contiguous().view(nl, beam, batch, -1),
+                  c.contiguous().view(nl, beam, batch, -1))
+        lstm_out = states[0][-1]
+        
+        dec_out = self._projection(lstm_out)
+
+        logit = torch.mm(dec_out.contiguous().view(batch*beam, -1), self._embedding.weight.t())
+        logit = torch.log(F.softmax(logit, dim=-1) + 1e-8).view(beam, batch, -1)
+
+        k_logit, k_tok = logit.topk(k=beam_size, dim=-1)
+        return k_tok, k_logit, (states, dec_out)
+
+
 
 
 class WordToSentLSTM(nn.Module):

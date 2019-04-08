@@ -23,7 +23,7 @@ from decoding import make_html_safe
 
 
 def decode(save_path, model_dir, data_path, split, batch_size,
-           beam_size, diverse, max_sents, max_words, cuda):
+           beam_size, max_sents, max_words, cuda):
     start = time()
 
     if beam_size == 1:
@@ -55,15 +55,12 @@ def decode(save_path, model_dir, data_path, split, batch_size,
             #三层的list，最外层为article，下一层为sentence，再下一层为word
  
             if beam_size > 1:
-                #先还没有实现
-                all_beams = abstractor(tokenized_article_batch, beam_size, diverse)
-                dec_outs = rerank_mp(all_beams, ext_inds)
+                dec_outs = abstractor(tokenized_article_batch, beam_size)
             else:
                 dec_outs = abstractor(tokenized_article_batch)
-            # assert i == batch_size*i_debug
 
             for dec_out in dec_outs:
-                decoded_sents = ['\n'.join(dec_out)]
+                decoded_sents = [' '.join(sent) for sent in dec_out]
                 with open(join(save_path, 'output/{}.dec'.format(i)),'w') as f:
                     f.write(make_html_safe('\n'.join(decoded_sents)))
                 i += 1
@@ -133,8 +130,6 @@ if __name__ == '__main__':
                         help='batch size of faster decoding')
     parser.add_argument('--beam', type=int, action='store', default=1,
                         help='beam size for beam-search (reranking included)')
-    parser.add_argument('--div', type=float, action='store', default=1.0,
-                        help='diverse ratio for the diverse beam-search')
     parser.add_argument('--max_dec_word', type=int, action='store', default=30,
                         help='maximun words to be decoded for the abstractor')
     parser.add_argument('--max_dec_sent', type=int, action='store', default=10,
@@ -149,5 +144,5 @@ if __name__ == '__main__':
 
     data_split = 'test' if args.test else 'val'
     decode(args.path, args.model_dir, args.data_path,
-           data_split, args.batch, args.beam, args.div,
+           data_split, args.batch, args.beam, 
            args.max_dec_sent, args.max_dec_word, args.cuda)
