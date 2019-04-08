@@ -267,7 +267,7 @@ class SentToWordLSTM(nn.Module):
 
     def forward(self, input_hidden_states, target, init_h, init_c):
         max_len = target.size()[1]
-
+ 
         # hidden_states = torch.cat([torch.unsqueeze(init_h, 0), torch.unsqueeze(init_c, 0)], dim=0)
 
         init_states = (torch.unsqueeze(init_h, 0).contiguous(),

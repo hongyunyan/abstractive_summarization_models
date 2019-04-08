@@ -44,7 +44,7 @@ class MatchDataset(CnnDmDataset):
         #改为返回source为原文,target为abstract,然后两个都是list？
         js_data = super().__getitem__(i)
         art_sents, abs_sents = (
-            js_data['article'], js_data['abstract'])
+            js_data['artile'], js_data['abstract'])
         return art_sents, abs_sents
 
 
@@ -212,7 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, action='store', default=16,
                         help='the training batch size')
     parser.add_argument(
-        '--ckpt_freq', type=int, action='store', default=1000,
+        '--ckpt_freq', type=int, action='store', default=10000,
         help='number of update steps for checkpoint and validation'
     )
     parser.add_argument('--patience', type=int, action='store', default=10,

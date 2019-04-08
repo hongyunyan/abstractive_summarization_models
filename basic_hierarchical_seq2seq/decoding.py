@@ -25,7 +25,7 @@ class DecodeDataset(CnnDmDataset):
 
     def __getitem__(self, i):
         js_data = super().__getitem__(i)
-        art_sents = js_data['article']
+        art_sents = js_data['artile']
         return art_sents
 
 
@@ -91,14 +91,16 @@ class Abstractor(object):
 
         dec_sents = []
         for i, raw_words in enumerate(raw_article_sents):
-            dec = []
+            abstract = []
             for sent in decs[i]:
+                abs_sent = []
                 for id_ in sent:
                     if id_ == END:
                         continue
                     else:
-                        dec.append(self._id2word[id_])
-            dec_sents.append(dec)
+                        abs_sent.append(self._id2word[id_])
+                abstract.append(abs_sent)
+            dec_sents.append(abstract)
         return dec_sents
 
 

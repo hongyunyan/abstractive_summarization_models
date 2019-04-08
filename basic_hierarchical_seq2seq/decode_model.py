@@ -63,7 +63,7 @@ def decode(save_path, model_dir, data_path, split, batch_size,
             # assert i == batch_size*i_debug
 
             for dec_out in dec_outs:
-                decoded_sents = [' '.join(dec_out)]
+                decoded_sents = ['\n'.join(dec_out)]
                 with open(join(save_path, 'output/{}.dec'.format(i)),'w') as f:
                     f.write(make_html_safe('\n'.join(decoded_sents)))
                 i += 1
