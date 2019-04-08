@@ -91,27 +91,17 @@ def sequence_mean(sequence, seq_lens, dim=1):
 def sequence_loss(logits, targets, xent_fn=None, pad_idx=0):
     """ functional interface of SequenceLoss"""
     assert logits.size()[:-1] == targets.size()
-    print("logits.size()\n", logits.size())
-    print("targets\n", targets.size())
+
     mask = targets != pad_idx
     mask_length = [sum(sent).item() for sent in mask]
-    print(mask_length, "\n", len(mask_length))
-    print("mask\n", mask, mask.size())
+
     target = targets.masked_select(mask)
-    #print("target\n", target, target.size())
-    #print("mask.unsqueeze(2).expand_as(logits)\n", mask.unsqueeze(2).expand_as(logits), mask.unsqueeze(2).expand_as(logits).size())
-    t1 = time.time()
-    logit = logits.masked_select(
-        mask.unsqueeze(2).expand_as(logits)
-    ).contiguous().view(-1, logits.size(-1))
-    t2 = time.time()
+
+    # logit = logits.masked_select(
+    #     mask.unsqueeze(2).expand_as(logits)
+    # ).contiguous().view(-1, logits.size(-1))
     logit_backup = change_reshape([logits], mask_length)[0]
-    t3 = time.time()
-    print("t1\n", t2-t1)
-    print("t2\n", t3-t2)
-    print(logit_backup.size())
-    print("logit\n", logit.size())
-    print(logit_backup==logit)
+
     if xent_fn:
         loss = xent_fn(logit, target)
     else:
