@@ -119,10 +119,10 @@ class BasicPipeline(object):
         self._opt.step() #更新所有的参数
         update_timestamp = time()
 
-        # print("forward_timestamp\n", over_timestamp - net_forward_timestamp)
-        # print("loss_cal_timestamp\n", loss_calcu_timestamp - over_timestamp)
-        # print("loss_backward_timestamp\n", loss_backward_timestamp - loss_calcu_timestamp)
-        # print("update_timestamp\n", update_timestamp - loss_backward_timestamp)
+        print("forward_timestamp\n", over_timestamp - net_forward_timestamp)
+        print("loss_cal_timestamp\n", loss_calcu_timestamp - over_timestamp)
+        print("loss_backward_timestamp\n", loss_backward_timestamp - loss_calcu_timestamp)
+        print("update_timestamp\n", update_timestamp - loss_backward_timestamp)
         self._net.zero_grad() #清空梯度
         torch.cuda.empty_cache() 
 
