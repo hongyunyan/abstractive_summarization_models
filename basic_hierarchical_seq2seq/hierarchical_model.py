@@ -1,4 +1,5 @@
 import torch
+from time import time
 from math import pow
 import random
 from torch import nn
@@ -15,6 +16,8 @@ from utils import reorder_sequence, reorder_lstm_states
 from utils import EOA
 from seq2seq import Seq2SeqSumm
 import beamsearch as bs
+
+import torch.multiprocessing as mp
 
 
 INIT = 1e-2
@@ -34,10 +37,13 @@ class HierarchicalSumm(nn.Module):
         self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force, embedding)
     
     def forward(self, article_sents, article_lens, sent_lens,  abstract_sents, abs_lens):  
-        # sent_
+        start_timestamp = time()
         #传给第一个函数的article是一个n个句子×m个word， art_lens为每个句子的长度的n维矩阵，应该还要再有一个矩阵，记录每个article有几个句子，这样可以将输出的hidden state转成对应的格式
         #先传给词到句子的那层, 输入source文本以及source每条文本的长度，返回每一句末尾的hidden_states和c值组成的矩阵,并且返回hidden_states中，每个文本的长度
+
         words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
+        wordtosent_timestamp = time()
+
         #转格式！
         #不会转格式啊嗷嗷啊！！！！
         #坑仿佛填上了！！ 根据上面那个batch，256，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
@@ -52,18 +58,29 @@ class HierarchicalSumm(nn.Module):
         #先生成一个文章数×文章最多的句子数的矩阵
         
         article_hidden_states = change_shape(hidden_states, article_lens, pad)
-    
+        
+        change_shape_timestamp = time()
         #然后句子的输入开始过最基本的seq2seq层
         sent_dec_out, sent_h_out, sent_c_out = self._Seq2SeqSumm(article_hidden_states, article_lens, abs_lens)
-
+        seq2seq_timestamp = time()
         #感觉这边要设置一下，如何让sent数目输出的是正确的？？？？加入loss？？？？
 
         #坑坑坑来来来转格式了，从文章数×target句子长×256 到所有句子数×256  sentence_hidden_states!!
         sent_output = change_reshape([sent_dec_out, sent_h_out, sent_c_out], abs_lens)
         sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
 
+        change_reshape_timestamp = time()
         #获得句子的每个hidden以后，一生多 生成每个句子, 然后每个生成的具体句子跟原始的target做loss，返回loss
         logit = self._SentToWordLSTM(sentence_output_states, abstract_sents, sentence_hidden_states, sentence_context_states)
+
+        senttoword_timestamp = time()
+
+        # print("word_to_sent_timestamp\n", wordtosent_timestamp - start_timestamp)
+        # print("change_shape_timestamp\n", change_shape_timestamp - wordtosent_timestamp)
+        # print("seq2seq_timestamp\n", seq2seq_timestamp - change_shape_timestamp)
+        # print("change_reshape_timestamp\n", change_reshape_timestamp - seq2seq_timestamp)
+        # print("sent_to_word_timestamp\n", senttoword_timestamp - change_reshape_timestamp)
+
         return logit
     
     

@@ -96,13 +96,6 @@ def batchify_fn(pad, start, end, eoa, data, cuda=True):
             tar_outs.append(tar + [end])
         tar_ins.append([start])
         tar_outs.append([eoa])
-    
-    
-    # tar_ins = [[start] + tgt for tgt in target_sent]
-    # #增加一个生成END的start句子输入
-    # tar_ins.append([[start]])
-    # targets = [tgt + [end] for tgt in target_sent]
-    # targets.append([[eoa]])
 
     source = pad_batch_tensorize(source_sent, pad, cuda)
     tar_in = pad_batch_tensorize(tar_ins, pad, cuda)
