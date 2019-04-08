@@ -161,15 +161,15 @@ class BasicTrainer(object):
         self._current_p = 0
         self._best_val = None
 
-    def log(self, log_dict):
+    def log(self, log_dict, time_spend):
         loss = log_dict['loss'] if 'loss' in log_dict else log_dict['reward']
         if self._running_loss is not None:
             self._running_loss = 0.99*self._running_loss + 0.01*loss
         else:
             self._running_loss = loss
-        print("now is ", time())
-        print('train step: {}, {}: {:.4f}\r'.format(
-            self._step,
+
+        print('train step: {}, time spend: {:.2f}, {}: {:.4f}\r'.format(
+            self._step, time_spend, 
             'loss' if 'loss' in log_dict else 'reward',
             self._running_loss))
         for key, value in log_dict.items():
@@ -215,13 +215,18 @@ class BasicTrainer(object):
         return self._current_p >= self._patience
 
     def train(self):
+        print_iter = 1000
         try:
             start = time()
+            iter_start = time()
             print('Start training')
             while True:
                 log_dict = self._pipeline.train_step()
                 self._step += 1
-                self.log(log_dict)
+                if (self._step % print_iter ==0):
+                    time_spend = time() - iter_start
+                    self.log(log_dict, time_spend)
+                    iter_start = time()
 
                 if self._step % self._ckpt_freq == 0:
                     stop = self.checkpoint()
