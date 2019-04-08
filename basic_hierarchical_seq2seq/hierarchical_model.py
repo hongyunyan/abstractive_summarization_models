@@ -1,4 +1,6 @@
 import torch
+from math import pow
+import random
 from torch import nn
 from torch.nn import init
 
@@ -18,7 +20,7 @@ INIT = 1e-2
 
 class HierarchicalSumm(nn.Module):
     def __init__(self, vocab_size, emb_dim,
-                 n_hidden, bidirectional, n_layer, embedding, dropout=0.0):
+                 n_hidden, bidirectional, n_layer, sampling_teaching_force, embedding, dropout=0.0):
         super().__init__()
 
         self._bidirectional = bidirectional
@@ -28,7 +30,7 @@ class HierarchicalSumm(nn.Module):
 
         self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout)
         self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, embedding)
-        self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, embedding)
+        self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force, embedding)
     
     def forward(self, article_sents, article_lens, sent_lens,  abstract_sents, abs_lens):  
         # sent_
@@ -250,10 +252,10 @@ class HierarchicalSumm(nn.Module):
 
 
 class SentToWordLSTM(nn.Module):
-    def __init__(self, emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, embedding):
+    def __init__(self, emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force,embedding):
         super().__init__()
         self._dec_lstm = MultiLayerLSTMCells(n_hidden, n_hidden, n_layer, dropout=dropout)
-
+        self._sampling_teaching_force = sampling_teaching_force
         self._embedding = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
         if embedding is not None:
             assert self._embedding.weight.size() == embedding.size()
@@ -264,10 +266,15 @@ class SentToWordLSTM(nn.Module):
             nn.Tanh(),
             nn.Linear(n_hidden, emb_dim, bias=False)
         )
+        self._teaching_force_ratio = 1
+        self._step_num = 0
 
     def forward(self, input_hidden_states, target, init_h, init_c):
+        self._teaching_force_ratio = pow(0.99995, self._step_num)
+        self._step_num += 1
+        
         max_len = target.size()[1]
- 
+
         # hidden_states = torch.cat([torch.unsqueeze(init_h, 0), torch.unsqueeze(init_c, 0)], dim=0)
 
         init_states = (torch.unsqueeze(init_h, 0).contiguous(),
@@ -276,13 +283,25 @@ class SentToWordLSTM(nn.Module):
         states = init_states, input_hidden_states  #这边瞎糊的
         logits = [] 
         for i in range(max_len):
-            tok = target[:, i:i+1]
+            #如果利用scheduled sampling方法，随机选择用真实还是生成的tok作为输入。
+            sampling = False
+            if (self._sampling_teaching_force and i!=0):
+                ratio = random.random()
+                if (ratio > self._teaching_force_ratio):
+                    sampling = True
+
+            if (sampling):
+                tok = torch.max(lp, dim=1, keepdim=True)[1] #tok[:,0]
+            else:
+                tok = target[:, i:i+1]
+            
             lp, states = self._step(tok, states)
             logits.append(lp)
         logit = torch.stack(logits, dim=1)   
         return logit           
 
     def _step(self, tok, states):
+        
         prev_states, prev_dec_out = states
         lstm_in = torch.cat([self._embedding(tok).squeeze(1), prev_dec_out], dim=1)
         states = self._dec_lstm(lstm_in, prev_states)

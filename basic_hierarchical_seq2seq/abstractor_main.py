@@ -49,7 +49,7 @@ class MatchDataset(CnnDmDataset):
 
 
 def configure_net(vocab_size, emb_dim,
-                  n_hidden, bidirectional, n_layer, embedding):
+                  n_hidden, bidirectional, n_layer, sampling_teaching_force, embedding):
     net_args = {}
     net_args['vocab_size']    = vocab_size
     net_args['emb_dim']       = emb_dim
@@ -57,6 +57,7 @@ def configure_net(vocab_size, emb_dim,
     net_args['bidirectional'] = bidirectional
     net_args['n_layer']       = n_layer
     net_args['embedding']     = embedding
+    net_args['sampling_teaching_force'] = sampling_teaching_force
 
     net = HierarchicalSumm(**net_args)
     return net, net_args
@@ -73,7 +74,6 @@ def configure_training(opt, lr, clip_grad, lr_decay, batch_size):
     train_params['clip_grad_norm'] = clip_grad
     train_params['batch_size']     = batch_size
     train_params['lr_decay']       = lr_decay
-
     
     nll = lambda logit, target: F.nll_loss(logit, target, reduce=False)
     def criterion(logits, targets):
@@ -123,7 +123,7 @@ def main(args):
             {i: w for w, i in word2id.items()}, args.w2v) #提供一个embedding矩阵
 
         net, net_args = configure_net(len(word2id), args.emb_dim,
-                                  args.n_hidden, args.bi, args.n_layer, embedding)
+                                  args.n_hidden, args.bi, args.n_layer, args.sampling_teaching_force, embedding)
     else:
         print("please provide pretrain_w2v")
         return 
@@ -211,6 +211,8 @@ if __name__ == '__main__':
                         help='gradient clipping')
     parser.add_argument('--batch', type=int, action='store', default=16,
                         help='the training batch size')
+    parser.add_argument('--sampling_teaching_force', type=bool, action='store', default=False,
+                        help='choose whether use scheduled sampling for teaching force algorithm')
     parser.add_argument(
         '--ckpt_freq', type=int, action='store', default=10000,
         help='number of update steps for checkpoint and validation'
