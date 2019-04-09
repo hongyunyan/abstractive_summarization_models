@@ -100,9 +100,7 @@ class BasicPipeline(object):
         self._net.train()
         fw_args, bw_args = next(self._batches)
         #bw_args为 一个有所有单词的target的list
-        net_forward_timestamp = time()
         net_out = self._net(*fw_args)  #34.31.30022
-        over_timestamp = time()
         #返回这轮生成的每个句子每个timestamp的输出
 
         # get logs and output for logging, backward
@@ -110,19 +108,13 @@ class BasicPipeline(object):
         loss_args = self.get_loss_args(net_out, bw_args) #两个东西拼一下
         # backward and update ( and optional gradient monitoring )
         loss = self._criterion(*loss_args).mean()  #计算loss的过程中，不应该考虑最后几位空的怎么处理吗??
-        loss_calcu_timestamp = time()
         loss.backward() #这是自动的反向吗？
-        loss_backward_timestamp = time()
         log_dict['loss'] = loss.item()
         if self._grad_fn is not None:
             log_dict.update(self._grad_fn())  #更新grad？但是这更新操作迷
         self._opt.step() #更新所有的参数
         update_timestamp = time()
 
-        print("forward_timestamp\n", over_timestamp - net_forward_timestamp)
-        print("loss_cal_timestamp\n", loss_calcu_timestamp - over_timestamp)
-        print("loss_backward_timestamp\n", loss_backward_timestamp - loss_calcu_timestamp)
-        print("update_timestamp\n", update_timestamp - loss_backward_timestamp)
         self._net.zero_grad() #清空梯度
         torch.cuda.empty_cache() 
 
@@ -225,7 +217,7 @@ class BasicTrainer(object):
         return self._current_p >= self._patience
 
     def train(self):
-        print_iter = 1000
+        print_iter = 100
         try:
             start = time()
             iter_start = time()
