@@ -93,10 +93,14 @@ def sequence_loss(logits, targets, xent_fn=None, pad_idx=0):
     assert logits.size()[:-1] == targets.size()
 
     mask = targets != pad_idx
+    #mask_length = [sum(sent).item() for sent in mask]
+
     target = targets.masked_select(mask)
+
     logit = logits.masked_select(
         mask.unsqueeze(2).expand_as(logits)
     ).contiguous().view(-1, logits.size(-1))
+    #logit= change_reshape([logits], mask_length)[0]
 
     if xent_fn:
         loss = xent_fn(logit, target)
@@ -166,16 +170,13 @@ def change_reshape(input, input_lens):
     # output = [None] * len(input)
     # for index in range(len(input)): 
     #     output[index] = pack_padded_sequence(input[index].permute(1,0,2).transpose(0,1), input_lens_trans).data
-
-    # print(time.time())
     for i in range(len(input_lens)):
-        for j in range(input_lens[i]):
-            if (i==0 and j==0):
-                for index in range(len(input)):
-                    output[index] = torch.unsqueeze(input[index][i][j], 0)
-            else:
-                for index in range(len(input)):
-                    output[index] = torch.cat((output[index], torch.unsqueeze(input[index][i][j], 0)), dim=0)
+        if (i == 0):
+            for index in range(len(input)):
+                output[index] = input[index][i][:input_lens[i]]
+        else:
+            for index in range(len(input)):
+                output[index] = torch.cat((output[index], input[index][i][:input_lens[i]]), dim=0)
 
     return output
 
@@ -184,12 +185,11 @@ def change_reshape_decoder(input, input_lens):
     output = [None] * len(input)
 
     for i in range(len(input_lens)):
-        for j in range(input_lens[i]):
-            if (i==0 and j==0):
+            if (i==0):
                 for index in range(len(input)):
-                    output[index] = torch.unsqueeze(input[index][j][i], 0)
+                    output[index] = input[index][:input_lens[i]][i]
             else:
                 for index in range(len(input)):
-                    output[index] = torch.cat((output[index], torch.unsqueeze(input[index][j][i], 0)), dim=0)
+                    output[index] = torch.cat((output[index], input[index][:input_lens[i]][i]), dim=0)
 
     return output
