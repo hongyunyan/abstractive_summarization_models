@@ -93,14 +93,13 @@ def sequence_loss(logits, targets, xent_fn=None, pad_idx=0):
     assert logits.size()[:-1] == targets.size()
 
     mask = targets != pad_idx
-    #mask_length = [sum(sent).item() for sent in mask]
 
     target = targets.masked_select(mask)
 
-    logit = logits.masked_select(
-        mask.unsqueeze(2).expand_as(logits)
-    ).contiguous().view(-1, logits.size(-1))
-    #logit= change_reshape([logits], mask_length)[0]
+    # logit = logits.masked_select(
+    #     mask.unsqueeze(2).expand_as(logits)
+    # ).contiguous().view(-1, logits.size(-1))
+    logit = logit_change_shape(mask, logits)
 
     if xent_fn:
         loss = xent_fn(logit, target)
@@ -110,6 +109,13 @@ def sequence_loss(logits, targets, xent_fn=None, pad_idx=0):
     assert (not math.isnan(loss.mean().item())
             and not math.isinf(loss.mean().item()))
     return loss
+
+def logit_change_shape(mask, logits):
+    whole_size = mask.size()[0] * mask.size()[1]
+    range_mask = torch.arange(whole_size).reshape(-1, mask.size()[1])
+    select_range = torch.masked_select(range_mask, mask)
+    logit = torch.index_select(logits.reshape(-1 ,logits.size()[2]), 0, select_range)
+    return logit
 
 
 #################### LSTM helper #########################
@@ -158,18 +164,7 @@ def change_shape(input, input_lens, pad):
 def change_reshape(input, input_lens):
     #三维矩阵转为二维矩阵
     output = [None] * len(input)
-    # print(time.time()) 问题太多了，还有不按序列的问题，到时候测出来如果是bottle neck再考虑改
-    # sort_ind = sorted(range(len(input_lens)),
-    #                  key=lambda i: input_lens[i], reverse=True)
-    # input_lens_new = [input_lens[i] for i in sort_ind] #再度排序
-    # input_new = reorder_sequence(input, sort_ind)
 
-    # input_lens_trans = []
-    # for i in range(max(input_lens)):
-    #     input_lens_trans.append(sum(j > i for j in input_lens))
-    # output = [None] * len(input)
-    # for index in range(len(input)): 
-    #     output[index] = pack_padded_sequence(input[index].permute(1,0,2).transpose(0,1), input_lens_trans).data
     for i in range(len(input_lens)):
         if (i == 0):
             for index in range(len(input)):
