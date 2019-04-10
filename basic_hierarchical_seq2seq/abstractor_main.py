@@ -196,7 +196,7 @@ if __name__ == '__main__':
                         help='disable bidirectional LSTM encoder')
 
     # length limit
-    parser.add_argument('--max_target_sent', type=int, action='store', default=10,
+    parser.add_argument('--max_target_sent', type=int, action='store', default=20,
                         help='maximum sentence num in the summary')
     parser.add_argument('--max_word', type=int, action='store', default=100,
                         help='maximun words in a single article sentence')
