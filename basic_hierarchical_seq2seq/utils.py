@@ -113,7 +113,7 @@ def sequence_loss(logits, targets, xent_fn=None, pad_idx=0):
 def logit_change_shape(mask, logits):
     whole_size = mask.size()[0] * mask.size()[1]
     range_mask = torch.arange(whole_size).reshape(-1, mask.size()[1])
-    select_range = torch.masked_select(range_mask, mask)
+    select_range = torch.masked_select(range_mask, mask.cpu()).to(logits.device)
     logit = torch.index_select(logits.reshape(-1 ,logits.size()[2]), 0, select_range)
     return logit
 
