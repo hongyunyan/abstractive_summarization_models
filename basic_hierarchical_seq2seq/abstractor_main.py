@@ -82,7 +82,7 @@ def configure_training(opt, lr, clip_grad, lr_decay, batch_size):
     return criterion, train_params
 
 def build_batchers(word2id, cuda, debug):
-    prepro = prepro_fn(args.max_art, args.max_abs)
+    prepro = prepro_fn(args.max_word)
     batchify = compose(
         batchify_fn(PAD, START, END, EOA, cuda=cuda),
         convert_batch(UNK, word2id)
@@ -198,10 +198,8 @@ if __name__ == '__main__':
     # length limit
     parser.add_argument('--max_target_sent', type=int, action='store', default=10,
                         help='maximum sentence num in the summary')
-    parser.add_argument('--max_art', type=int, action='store', default=1000,
+    parser.add_argument('--max_word', type=int, action='store', default=100,
                         help='maximun words in a single article sentence')
-    parser.add_argument('--max_abs', type=int, action='store', default=200,
-                        help='maximun words in a single abstract sentence')
     # training options
     parser.add_argument('--lr', type=float, action='store', default=1e-3,
                         help='learning rate')

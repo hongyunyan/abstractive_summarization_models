@@ -99,9 +99,6 @@ def sequence_loss(logits, targets, xent_fn=None, pad_idx=0):
 
     target = targets.masked_select(mask)
 
-    # logit = logits.masked_select(
-    #     mask.unsqueeze(2).expand_as(logits)
-    # ).contiguous().view(-1, logits.size(-1))
     logit = logit_change_shape(mask, logits)
 
     if xent_fn:

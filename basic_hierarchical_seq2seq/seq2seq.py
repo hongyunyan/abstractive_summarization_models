@@ -163,10 +163,7 @@ class AttentionalLSTMDecoder(object):
                 dec_out_all = torch.cat((dec_out_all, torch.unsqueeze(dec_out, 0)), dim=0)
                 h_all = torch.cat((h_all, torch.unsqueeze(h[-1], 0)), dim=0)
                 c_all = torch.cat((c_all, torch.unsqueeze(c[-1], 0)), dim=0)  #这个写法太狗血了，记得改掉233
-            print("dec_out\n", dec_out, dec_out.size())
-            print("dec_out_all\n", dec_out_all, dec_out.size())
         #返回sentence level的所有dec_out
-        print("dec_out_all.transpose(0,1)\n", dec_out_all.transpose(0,1), dec_out_all.transpose(0,1).size())
         return dec_out_all.transpose(0,1), h_all.transpose(0,1), c_all.transpose(0,1) #这样就是batch×length×n_hidden了
 
     def _step(self, states, attention):

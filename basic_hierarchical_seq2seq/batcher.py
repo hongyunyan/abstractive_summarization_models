@@ -35,11 +35,11 @@ def conver2id(unk, word2id, article_lists):
 
 #输出一一对应的atricle和abstract的list
 @curry
-def prepro_fn(max_src_len, max_tgt_len, batch):
+def prepro_fn(max_len, batch):
     sources, targets = batch
  
-    sources = tokenize(max_src_len, sources)
-    targets = tokenize(max_tgt_len, targets)
+    sources = tokenize(max_len, sources)
+    targets = tokenize(max_len, targets)
     batch = list(zip(sources, targets))
     return batch
 
@@ -78,7 +78,17 @@ def batchify_fn(pad, start, end, eoa, data, cuda=True):
     #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
 
     data.sort(key=lambda data:len(data[0]), reverse=True)
-    sources, targets = tuple(map(list, unzip(data)))
+    sources, targets = list(map(list, unzip(data)))
+
+    #删除targets中abs长度大于20的文本
+    del_num = []
+    for i in range(len(sources)):
+        if (len(targets[i]) > 20):
+            del_num.append(i)
+
+    for num in reversed(del_num):
+        del sources[num]
+        del targets[num]
 
     source_article_len = [len(source) for source in sources]
     target_article_len = [len(target) + 1 for target in targets]
