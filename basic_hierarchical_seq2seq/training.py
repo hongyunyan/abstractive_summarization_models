@@ -118,7 +118,6 @@ class BasicPipeline(object):
         self._net.zero_grad() #清空梯度
         torch.cuda.empty_cache() 
 
-
         return log_dict
 
     def validate(self):

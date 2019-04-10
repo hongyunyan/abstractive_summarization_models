@@ -111,7 +111,7 @@ def main(args):
     # batcher
     with open(join(args.data_path, 'vocab_cnt.pkl'), 'rb') as f:
         wc = pkl.load(f)
-    word2id = make_vocab(wc, args.vsize) #一个word的词典
+    word2id = make_vocab(wc, args.vsize, args.max_target_sent) #一个word的词典
     train_batcher, val_batcher = build_batchers(word2id, args.cuda, args.debug)
 
     # make net
@@ -196,6 +196,8 @@ if __name__ == '__main__':
                         help='disable bidirectional LSTM encoder')
 
     # length limit
+    parser.add_argument('--max_target_sent', type=int, action='store', default=10,
+                        help='maximum sentence num in the summary')
     parser.add_argument('--max_art', type=int, action='store', default=1000,
                         help='maximun words in a single article sentence')
     parser.add_argument('--max_abs', type=int, action='store', default=200,

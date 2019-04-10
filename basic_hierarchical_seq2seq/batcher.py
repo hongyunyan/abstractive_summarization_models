@@ -8,8 +8,10 @@ from cytoolz import curried
 
 import torch
 import torch.multiprocessing as mp
-from utils import reorder_sequence
+from utils import reorder_sequence, special_word_num
 import time 
+
+
 
 def coll_fn(data):
     source_lists, target_lists = unzip(data)
@@ -91,10 +93,12 @@ def batchify_fn(pad, start, end, eoa, data, cuda=True):
     tar_ins = []
     tar_outs = []
     for target in targets:
+        sent_num = 0
         for tar in target:
-            tar_ins.append([start] + tar)
+            tar_ins.append([special_word_num + sent_num] + tar)
             tar_outs.append(tar + [end])
-        tar_ins.append([start])
+            sent_num += 1
+        tar_ins.append([special_word_num + sent_num])
         tar_outs.append([eoa])
 
     source = pad_batch_tensorize(source_sent, pad, cuda)

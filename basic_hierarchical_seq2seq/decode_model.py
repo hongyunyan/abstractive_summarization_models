@@ -130,7 +130,7 @@ if __name__ == '__main__':
                         help='batch size of faster decoding')
     parser.add_argument('--beam', type=int, action='store', default=1,
                         help='beam size for beam-search (reranking included)')
-    parser.add_argument('--max_dec_word', type=int, action='store', default=30,
+    parser.add_argument('--max_dec_word', type=int, action='store', default=50,
                         help='maximun words to be decoded for the abstractor')
     parser.add_argument('--max_dec_sent', type=int, action='store', default=10,
                         help='maximun sent to be decoded for the abstractor')

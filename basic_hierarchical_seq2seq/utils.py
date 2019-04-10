@@ -28,15 +28,18 @@ UNK = 1
 START = 2
 END = 3
 EOA = 4 #end of article
-#返回一个dict,key为word,value为序号
-def make_vocab(wc, vocab_size):
+special_word_num = 5
+#返回一个dict,key为word,value为序号, 并且在vocab中加入表示位置信息，max_sent_num为多少，就生成几个特殊的位置信息表示
+def make_vocab(wc, vocab_size, max_sent_num):
     word2id, id2word = {}, {}
     word2id['<pad>'] = PAD
     word2id['<unk>'] = UNK
     word2id['<start>'] = START
     word2id['<end>'] = END
     word2id['<eoa>'] = EOA
-    for i, (w, _) in enumerate(wc.most_common(vocab_size), 5):  #most_common 返回一个list, list包含每个word和出现次数对 ,enumerate的第二个参数用来明确start iterator for index
+    for i in range(max_sent_num + 1):
+        word2id['sent_'+str(i)] = i + 5  #位置信息表示的对应序号为 5+第几句[从0开始计算句子]，补上最后一个eoa的句子
+    for i, (w, _) in enumerate(wc.most_common(vocab_size), 5 + max_sent_num + 1):  #most_common 返回一个list, list包含每个word和出现次数对 ,enumerate的第二个参数用来明确start iterator for index
         word2id[w] = i
     return word2id
 
@@ -179,12 +182,7 @@ def change_reshape_decoder(input, input_lens):
     #三维矩阵转为二维矩阵
     output = [None] * len(input)
 
-    for i in range(len(input_lens)):
-            if (i==0):
-                for index in range(len(input)):
-                    output[index] = input[index][:input_lens[i]][i]
-            else:
-                for index in range(len(input)):
-                    output[index] = torch.cat((output[index], input[index][:input_lens[i]][i]), dim=0)
+    for index in range(len(input)):
+        output[index] = torch.stack(input[index], dim = 0).transpose(0,1).reshape(-1, input[index][0].size()[-1])
 
     return output

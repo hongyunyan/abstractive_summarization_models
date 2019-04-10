@@ -13,12 +13,11 @@ from utils import sequence_mean, len_mask, change_shape, change_reshape, change_
 from torch.nn import functional as F
 from utils import reorder_sequence, reorder_lstm_states
 
-from utils import EOA
+from utils import EOA, special_word_num
 from seq2seq import Seq2SeqSumm
 import beamsearch as bs
 
 import torch.multiprocessing as mp
-
 
 INIT = 1e-2
 
@@ -110,8 +109,9 @@ class HierarchicalSumm(nn.Module):
         init_states = (torch.unsqueeze(sentence_hidden_states, 0).contiguous(),
                        torch.unsqueeze(sentence_context_states, 0).contiguous())
         states = init_states, sentence_output_states
-        batch_size = sentence_output_states.size()[0]
-        tok = torch.LongTensor([start]*batch_size).to(article_sents.device)
+        # batch_size = sentence_output_states.size()[0]
+
+        tok = torch.cat([torch.arange(decoder_len[0])] * len(decoder_len), dim=0).to(article_sents.device)
 
         outputs = None
         for i in range(max_words):
@@ -169,7 +169,7 @@ class HierarchicalSumm(nn.Module):
         c = sentence_context_states.unsqueeze(0)
         prev = sentence_output_states
 
-        all_beams = [bs.init_beam(start, (h[:, i, :], c[:, i, :], prev[i])) for i in range(batch_size)]
+        all_beams = [bs.init_beam(start.to(article_sents.device), (h[:, i, :], c[:, i, :], prev[i])) for i in range(batch_size)]
         finished_beams = [[] for _ in range(batch_size)]
         outputs = [None for _ in range(batch_size)]
         for t in range(max_words):
