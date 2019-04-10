@@ -330,7 +330,6 @@ class WordToSentLSTM(nn.Module):
             bidirectional, dropout, vocab_size, embedding):
         super().__init__()
 
-
         self._embedding = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
         if embedding is not None:
             assert self._embedding.weight.size() == embedding.size()

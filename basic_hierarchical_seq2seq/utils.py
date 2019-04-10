@@ -163,16 +163,13 @@ def change_shape(input, input_lens, pad):
 
 def change_reshape(input, input_lens):
     #三维矩阵转为二维矩阵
+    matrix = torch.arange(max(input_lens)).repeat(len(input_lens),1)
+    mask_matrix = torch.tensor(input_lens).repeat(max(input_lens),1).transpose(0,1)
+    mask = matrix < mask_matrix
+
     output = [None] * len(input)
-
-    for i in range(len(input_lens)):
-        if (i == 0):
-            for index in range(len(input)):
-                output[index] = input[index][i][:input_lens[i]]
-        else:
-            for index in range(len(input)):
-                output[index] = torch.cat((output[index], input[index][i][:input_lens[i]]), dim=0)
-
+    for i in range(len(input)):
+        output[i] = logit_change_shape(mask, input[i])
     return output
 
 def change_reshape_decoder(input, input_lens):
