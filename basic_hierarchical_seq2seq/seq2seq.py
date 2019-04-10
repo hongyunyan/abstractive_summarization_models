@@ -9,7 +9,6 @@ from utils import sequence_mean, len_mask
 
 from torch.nn import functional as F
 
-
 INIT = 1e-2
 
 
@@ -152,19 +151,23 @@ class AttentionalLSTMDecoder(object):
         states = init_states
         dec_out_all = None
 
+        dec_out_all = []
+        h_all = []
+        c_all = []
+
         for i in range(max(tar_lens)):  #感觉是在模拟time stamp
             states= self._step(states, attention)
             (h,c), dec_out = states
-            if (i == 0):
-                dec_out_all = torch.unsqueeze(dec_out, 0)
-                h_all = h
-                c_all = c
-            else:
-                dec_out_all = torch.cat((dec_out_all, torch.unsqueeze(dec_out, 0)), dim=0)
-                h_all = torch.cat((h_all, torch.unsqueeze(h[-1], 0)), dim=0)
-                c_all = torch.cat((c_all, torch.unsqueeze(c[-1], 0)), dim=0)  #这个写法太狗血了，记得改掉233
+            dec_out_all.append(dec_out)
+            h_all.append(h)
+            c_all.append(c)
+
         #返回sentence level的所有dec_out
-        return dec_out_all.transpose(0,1), h_all.transpose(0,1), c_all.transpose(0,1) #这样就是batch×length×n_hidden了
+        dec_out_all = torch.stack(dec_out_all, dim=0).transpose(0,1)
+        h_all = torch.stack(h_all, dim=0).transpose(0,1)
+        c_all = torch.stack(c_all, dim=0).transpose(0,1)
+
+        return dec_out_all, h_all, c_all #这样就是batch×length×n_hidden了
 
     def _step(self, states, attention):
         prev_states, prev_out = states
