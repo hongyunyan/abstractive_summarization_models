@@ -60,7 +60,6 @@ class HierarchicalSumm(nn.Module):
             hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
             hidden_states = hidden_states[-1]
 
-        print("hidden_states\n", hidden_states)
         #转格式！
         #不会转格式啊嗷嗷啊！！！！
         #坑仿佛填上了！！ 根据上面那个batch，256，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
@@ -385,7 +384,6 @@ class WordToSentLSTM(nn.Module):
         packed_seq = nn.utils.rnn.pack_padded_sequence(emb_sequence, seq_lens)  
         packed_out, final_states = self._lstm_layer(packed_seq, init_enc_states) 
         lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out) 
-        print("lstm_out\n", lstm_out)
 
         #再把位置调回来
         back_map = {ind: i for i, ind in enumerate(sort_ind)}
@@ -397,12 +395,9 @@ class WordToSentLSTM(nn.Module):
     
     def self_attn(self, hidden_output):
         #self attention
-        print("hidden_output\n", hidden_output)
         sent_origin = torch.tanh(torch.matmul(hidden_output, self.weight_W_sent) + self.bias_sent.expand(hidden_output.size())) #u_it = tanh(w_w*h_it+b)
         sent_attn = torch.matmul(sent_origin, self.weight_proj_sent)
-        print("sent_attn\n", sent_attn)
         sent_attn_norm = F.softmax(sent_attn + 1e-8 ) + 1e-8 
-        print("sent_attn_norm\n", sent_attn_norm)
         sent_output = torch.sum(torch.mul(sent_attn_norm.expand(sent_origin.size()), hidden_output), dim=1)
 
         return sent_output
