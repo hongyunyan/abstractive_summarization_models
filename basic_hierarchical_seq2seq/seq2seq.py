@@ -149,8 +149,7 @@ class AttentionalLSTMDecoder(object):
 
     def __call__(self, attention, init_states, tar_lens):
         states = init_states
-        dec_out_all = None
-
+ 
         dec_out_all = []
         h_all = []
         c_all = []
@@ -158,15 +157,17 @@ class AttentionalLSTMDecoder(object):
         for i in range(max(tar_lens)):  #感觉是在模拟time stamp
             states= self._step(states, attention)
             (h,c), dec_out = states
+
             dec_out_all.append(dec_out)
-            h_all.append(h)
-            c_all.append(c)
+            h_all.append(h[0])
+            c_all.append(c[0])
 
         #返回sentence level的所有dec_out
         dec_out_all = torch.stack(dec_out_all, dim=0).transpose(0,1)
         h_all = torch.stack(h_all, dim=0).transpose(0,1)
         c_all = torch.stack(c_all, dim=0).transpose(0,1)
-
+        
+        #返回sentence level的所有dec_out
         return dec_out_all, h_all, c_all #这样就是batch×length×n_hidden了
 
     def _step(self, states, attention):

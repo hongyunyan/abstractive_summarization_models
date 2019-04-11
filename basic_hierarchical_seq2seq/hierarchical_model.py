@@ -23,16 +23,16 @@ INIT = 1e-2
 
 class HierarchicalSumm(nn.Module):
     def __init__(self, vocab_size, emb_dim,
-                 n_hidden, bidirectional, n_layer, sampling_teaching_force, embedding, dropout=0.0):
+                 n_hidden, bidirectional, n_layer, sampling_teaching_force, self_attn, embedding, dropout=0.0):
         super().__init__()
 
         self._bidirectional = bidirectional
         enc_out_dim = n_hidden * (2 if bidirectional else 1)
         self._dec_h = nn.Linear(enc_out_dim, n_hidden, bias=False)
         self._n_hidden = n_hidden
-
+        self._self_attn = self_attn
         self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout)
-        self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, embedding)
+        self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
         self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force, embedding)
     
     def forward(self, article_sents, article_lens, sent_lens,  abstract_sents, abs_lens):  
@@ -40,18 +40,30 @@ class HierarchicalSumm(nn.Module):
         #传给第一个函数的article是一个n个句子×m个word， art_lens为每个句子的长度的n维矩阵，应该还要再有一个矩阵，记录每个article有几个句子，这样可以将输出的hidden state转成对应的格式
         #先传给词到句子的那层, 输入source文本以及source每条文本的长度，返回每一句末尾的hidden_states和c值组成的矩阵,并且返回hidden_states中，每个文本的长度
 
-        words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
-        wordtosent_timestamp = time()
 
+        if (self._self_attn):
+            sent_output = self._WordToSentLSTM(article_sents, sent_lens)  
+            wordtosent_timestamp = time()
+
+            hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
+        else:
+            words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
+            wordtosent_timestamp = time()
+
+            #转格式！
+            #不会转格式啊嗷嗷啊！！！！
+            #坑仿佛填上了！！ 根据上面那个batch，256，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
+
+            if self._bidirectional:
+                hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
+
+            hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
+            hidden_states = hidden_states[-1]
+
+        print("hidden_states\n", hidden_states)
         #转格式！
         #不会转格式啊嗷嗷啊！！！！
         #坑仿佛填上了！！ 根据上面那个batch，256，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
-
-        if self._bidirectional:
-            hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
-
-        hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
-        hidden_states = hidden_states[-1]
 
         pad = 1e-8  #用来填充没有句子的地方的hidden
         #先生成一个文章数×文章最多的句子数的矩阵
@@ -63,11 +75,9 @@ class HierarchicalSumm(nn.Module):
         sent_dec_out, sent_h_out, sent_c_out = self._Seq2SeqSumm(article_hidden_states, article_lens, abs_lens)
         seq2seq_timestamp = time()
         #感觉这边要设置一下，如何让sent数目输出的是正确的？？？？加入loss？？？？
-
         #坑坑坑来来来转格式了，从文章数×target句子长×256 到所有句子数×256  sentence_hidden_states!!
         sent_output = change_reshape([sent_dec_out, sent_h_out, sent_c_out], abs_lens)
         sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
-
         change_reshape_timestamp = time()
         #获得句子的每个hidden以后，一生多 生成每个句子, 然后每个生成的具体句子跟原始的target做loss，返回loss
         logit = self._SentToWordLSTM(sentence_output_states, abstract_sents, sentence_hidden_states, sentence_context_states)
@@ -94,6 +104,7 @@ class HierarchicalSumm(nn.Module):
         hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
         hidden_states = hidden_states[-1]
 
+    
         pad = 1e-8  #用来填充没有句子的地方的hidden
 
         article_hidden_states = change_shape(hidden_states, article_lens, pad)
@@ -109,7 +120,7 @@ class HierarchicalSumm(nn.Module):
         init_states = (torch.unsqueeze(sentence_hidden_states, 0).contiguous(),
                        torch.unsqueeze(sentence_context_states, 0).contiguous())
         states = init_states, sentence_output_states
-        # batch_size = sentence_output_states.size()[0]
+
 
         tok = torch.cat([torch.arange(decoder_len[0])] * len(decoder_len), dim=0).to(article_sents.device)
 
@@ -254,12 +265,10 @@ class SentToWordLSTM(nn.Module):
         self._step_num = 0
 
     def forward(self, input_hidden_states, target, init_h, init_c):
-        self._teaching_force_ratio = pow(0.99995, self._step_num)
+        self._teaching_force_ratio = pow(0.999995, self._step_num)
         self._step_num += 1
         
         max_len = target.size()[1]
-
-        # hidden_states = torch.cat([torch.unsqueeze(init_h, 0), torch.unsqueeze(init_c, 0)], dim=0)
 
         init_states = (torch.unsqueeze(init_h, 0).contiguous(),
                        torch.unsqueeze(init_c, 0).contiguous())  #传闻中变成连续块的函数
@@ -327,13 +336,14 @@ class SentToWordLSTM(nn.Module):
 
 class WordToSentLSTM(nn.Module):
     def __init__(self, emb_dim, n_hidden, n_layer,
-            bidirectional, dropout, vocab_size, embedding):
+            bidirectional, dropout, vocab_size, self_attn, embedding):
         super().__init__()
 
         self._embedding = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
         if embedding is not None:
             assert self._embedding.weight.size() == embedding.size()
             self._embedding.weight.data.copy_(embedding)
+        self._self_attn = self_attn
 
         state_layer = n_layer * (2 if bidirectional else 1)
         self._init_enc_h = nn.Parameter(
@@ -346,6 +356,16 @@ class WordToSentLSTM(nn.Module):
         init.uniform_(self._init_enc_c, -INIT, INIT)
 
         self._lstm_layer = nn.LSTM(input_size = emb_dim, hidden_size= n_hidden, num_layers = n_layer, bidirectional = bidirectional, dropout = dropout)
+
+        if bidirectional == True:
+            self.weight_W_sent = nn.Parameter(torch.Tensor(2 * n_hidden  ,2 * n_hidden))
+            self.bias_sent = nn.Parameter(torch.Tensor(2 * n_hidden))
+            self.weight_proj_sent = nn.Parameter(torch.Tensor(2* n_hidden, 1))
+        else:
+            #先不支持单向
+            pass
+        self.weight_W_sent.data.uniform_(-0.1, 0.1)
+        self.weight_proj_sent.data.uniform_(-0.1,0.1)
 
     def lstm(self, sequence, seq_lens, init_enc_states):
         #输出为batch，hidden_dim
@@ -365,15 +385,27 @@ class WordToSentLSTM(nn.Module):
         packed_seq = nn.utils.rnn.pack_padded_sequence(emb_sequence, seq_lens)  
         packed_out, final_states = self._lstm_layer(packed_seq, init_enc_states) 
         lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out) 
+        print("lstm_out\n", lstm_out)
 
         #再把位置调回来
         back_map = {ind: i for i, ind in enumerate(sort_ind)}
         reorder_ind = [back_map[i] for i in range(len(seq_lens))]
         lstm_out = reorder_sequence(lstm_out, reorder_ind)
         final_states = reorder_lstm_states(final_states, reorder_ind)
-        
+
         return lstm_out, final_states
-            
+    
+    def self_attn(self, hidden_output):
+        #self attention
+        print("hidden_output\n", hidden_output)
+        sent_origin = torch.tanh(torch.matmul(hidden_output, self.weight_W_sent) + self.bias_sent.expand(hidden_output.size())) #u_it = tanh(w_w*h_it+b)
+        sent_attn = torch.matmul(sent_origin, self.weight_proj_sent)
+        print("sent_attn\n", sent_attn)
+        sent_attn_norm = F.softmax(sent_attn + 1e-8 ) + 1e-8 
+        print("sent_attn_norm\n", sent_attn_norm)
+        sent_output = torch.sum(torch.mul(sent_attn_norm.expand(sent_origin.size()), hidden_output), dim=1)
+
+        return sent_output
 
     def forward(self, article_sents, sent_lens):
         size = (
@@ -390,6 +422,10 @@ class WordToSentLSTM(nn.Module):
 
         lstm_out, final_states  = self.lstm(article_sents, sent_lens, init_states)
 
-        return final_states
+        if (self._self_attn):
+            sent_output = self.self_attn(lstm_out.transpose(0,1))
+            return sent_output
+        else:
+            return final_states
 
 

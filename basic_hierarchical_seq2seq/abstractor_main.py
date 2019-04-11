@@ -49,7 +49,7 @@ class MatchDataset(CnnDmDataset):
 
 
 def configure_net(vocab_size, emb_dim,
-                  n_hidden, bidirectional, n_layer, sampling_teaching_force, embedding):
+                  n_hidden, bidirectional, n_layer, sampling_teaching_force, self_attn, embedding):
     net_args = {}
     net_args['vocab_size']    = vocab_size
     net_args['emb_dim']       = emb_dim
@@ -58,6 +58,7 @@ def configure_net(vocab_size, emb_dim,
     net_args['n_layer']       = n_layer
     net_args['embedding']     = embedding
     net_args['sampling_teaching_force'] = sampling_teaching_force
+    net_args['self_attn']     = self_attn
 
     net = HierarchicalSumm(**net_args)
     return net, net_args
@@ -123,7 +124,7 @@ def main(args):
             {i: w for w, i in word2id.items()}, args.w2v) #提供一个embedding矩阵
 
         net, net_args = configure_net(len(word2id), args.emb_dim,
-                                  args.n_hidden, args.bi, args.n_layer, args.sampling_teaching_force, embedding)
+                                  args.n_hidden, args.bi, args.n_layer, args.sampling_teaching_force, args.self_attn, embedding)
     else:
         print("please provide pretrain_w2v")
         return 
@@ -194,6 +195,8 @@ if __name__ == '__main__':
                         help='the number of layers of LSTM')
     parser.add_argument('--no-bi', action='store_true',
                         help='disable bidirectional LSTM encoder')
+    parser.add_argument('--self_attn', type=bool, action='store', default=False,
+                        help='use self attention for word to sent')
 
     # length limit
     parser.add_argument('--max_target_sent', type=int, action='store', default=20,
