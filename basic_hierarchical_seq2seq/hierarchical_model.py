@@ -65,7 +65,6 @@ class HierarchicalSumm(nn.Module):
 
             hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0)[-1] #从 [1,batch,512] 到 [batch,256]
 
-        print("hidden_states\n", hidden_states)
         #转格式！
         #不会转格式啊嗷嗷啊！！！！
         #坑仿佛填上了！！ 根据上面那个batch，256，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
@@ -100,15 +99,16 @@ class HierarchicalSumm(nn.Module):
     
     def batch_decode(self, article_sents, article_lens, sent_lens, start, max_sent, max_words):
         """ greedy decode support batching"""
-        words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
-
-        #抄换转格式！到时候给我苟回去！
-        if self._bidirectional:
-            hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
-
-        hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
-        hidden_states = hidden_states[-1]
-
+        
+        if (self._self_attn):
+             sent_output = self._WordToSentLSTM(article_sents, sent_lens)  
+             hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
+        else:
+            words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
+            if self._bidirectional:
+                hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
+            hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
+            hidden_states = hidden_states[-1]
     
         pad = 1e-8  #用来填充没有句子的地方的hidden
 
@@ -393,7 +393,6 @@ class WordToSentLSTM(nn.Module):
         packed_seq = nn.utils.rnn.pack_padded_sequence(emb_sequence, seq_lens)  
         packed_out, final_states = self._lstm_layer(packed_seq, init_enc_states) 
         lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out) 
-        #print("lstm_out\n", lstm_out)
 
         #再把位置调回来
         back_map = {ind: i for i, ind in enumerate(sort_ind)}
@@ -405,12 +404,9 @@ class WordToSentLSTM(nn.Module):
     
     def self_attn(self, hidden_output):
         #self attention
-        #print("hidden_output\n", hidden_output)
         sent_origin = torch.tanh(torch.matmul(hidden_output, self.weight_W_sent) + self.bias_sent.expand(hidden_output.size())) #u_it = tanh(w_w*h_it+b)
         sent_attn = torch.matmul(sent_origin, self.weight_proj_sent)
-        #print("sent_attn\n", sent_attn)
         sent_attn_norm = F.softmax(sent_attn + 1e-8 ) + 1e-8 
-        #print("sent_attn_norm\n", sent_attn_norm)
         sent_output = torch.sum(torch.mul(sent_attn_norm.expand(sent_origin.size()), hidden_output), dim=1)
 
         return sent_output
@@ -432,9 +428,7 @@ class WordToSentLSTM(nn.Module):
         
         
         if (self._self_attn):
-            t1 = time()
             sent_output = self.self_attn(lstm_out.transpose(0,1))
-            print("attn\n", time()-t1)
             return sent_output
         else:
             return final_states[0]
@@ -466,42 +460,40 @@ class HierarchicalWordToSentLSTM(WordToSentLSTM):
 
     def forward(self, article_sents, sent_lens):
         #排序排序，按长度倒序倒序
-        t1 = time()
+
         sort_ind = sorted(range(len(sent_lens)),
                         key=lambda i: sent_lens[i], reverse=True)
         sent_lens = [sent_lens[i] for i in sort_ind] 
         article_sents = reorder_sequence(article_sents, sort_ind, True)
-        t2 = time()
+
         #首先divide 8 分句子
         article_sents_divided, article_sents_deivide_lens, sent_divided_lens = self.devide(article_sents, sent_lens)
-        t3 = time()
+
         #扔去做第一层
         output = super().forward(article_sents_divided, article_sents_deivide_lens)
-        t4 = time()
+
         if (self._self_attn):
             output = torch.stack([self.dec_h(h) for h in output], dim=0) #从 [batch,512] 到 [batch,128]
         else:
             if (self.bidirectional):
                 output = torch.cat(output.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
             output = torch.stack([self.dec_h(h) for h in output], dim=0)[-1] #从 [1,batch,512] 到 [batch,128]
-        t5 = time()
+
         #套用楼上得到结果
         #搞第二层，先改个格式
         sent_divided_lens_tensor = torch.tensor(sent_divided_lens)
         input_packed_sequence = PackedSequence(output, sent_divided_lens_tensor)
         output_pad_sequence, _ = pad_packed_sequence(input_packed_sequence, padding_value = 1e-8)
-        t6 = time()
+
 
         #再把位置调回来
         back_map = {ind: i for i, ind in enumerate(sort_ind)}
         reorder_ind = torch.tensor([back_map[i] for i in range(len(sent_lens))])
         output_pad_sequence_reorder = output_pad_sequence.index_select(index=reorder_ind, dim=0)
         sent_divided_lens_reorder = sent_divided_lens_tensor.index_select(index=reorder_ind, dim=0).tolist()
-        t7 = time()
-        high_level_output = super().forward(output_pad_sequence_reorder, sent_divided_lens_reorder, False)
-        t8 = time()
 
-        print(t2-t1,",",t3-t2,",",t4-t3,",",t5-t4,",",t6-t5,",",t7-t6,",", t8-t7)
+        high_level_output = super().forward(output_pad_sequence_reorder, sent_divided_lens_reorder, False)
+
         return high_level_output
 
 
