@@ -94,15 +94,16 @@ class HierarchicalSumm(nn.Module):
     
     def batch_decode(self, article_sents, article_lens, sent_lens, start, max_sent, max_words):
         """ greedy decode support batching"""
-        words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
-
-        #抄换转格式！到时候给我苟回去！
-        if self._bidirectional:
-            hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
-
-        hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
-        hidden_states = hidden_states[-1]
-
+        
+        if (self._self_attn):
+             sent_output = self._WordToSentLSTM(article_sents, sent_lens)  
+             hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
+        else:
+            words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
+            if self._bidirectional:
+                hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
+            hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
+            hidden_states = hidden_states[-1]
     
         pad = 1e-8  #用来填充没有句子的地方的hidden
 
