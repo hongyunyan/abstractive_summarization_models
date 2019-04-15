@@ -119,10 +119,10 @@ class Seq2SeqSumm(nn.Module):
             c_output.append(c[0])
             dec_output.append(dec_out)
 
-            #怎么判断lens呢先空着呗
-        lens = [max_len] * batch_size
-            #填充好，然后最后判断lens
-        return dec_output, h_output, c_output, lens
+        #     #怎么判断lens呢先空着呗
+        # lens = [max_len] * batch_size
+        #     #填充好，然后最后判断lens
+        return dec_output, h_output, c_output
 
     def decode(self, article, go, eos, max_len):
         attention, init_dec_states = self.encode(article)

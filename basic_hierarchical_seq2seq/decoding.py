@@ -95,6 +95,8 @@ class Abstractor(object):
             for sent in decs[i]:
                 abs_sent = []
                 for id_ in sent:
+                    if id_ == EOA:
+                        break
                     if id_ == END:
                         continue
                     else:

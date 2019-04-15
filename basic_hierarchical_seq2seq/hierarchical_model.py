@@ -116,18 +116,17 @@ class HierarchicalSumm(nn.Module):
 
         #这边要改成encoder和decoder分离，先让已知的数据穿过seq2seq的encoder然后获得参数开始decoder 句子vec，然后再用句子vec decoder出sent vec
         #或者这边应该调用seq2seq的beam_decoder函数，让他自己decoder好返回给我下一步decoder的参数
-        sent_dec_out, sent_h_out, sent_c_out, decoder_len = self._Seq2SeqSumm.batch_decode(article_hidden_states, article_lens, max_sent)
+        sent_dec_out, sent_h_out, sent_c_out = self._Seq2SeqSumm.batch_decode(article_hidden_states, article_lens, max_sent)
 
         #快乐继续换格式
-        sent_output = change_reshape_decoder([sent_dec_out, sent_h_out, sent_c_out], decoder_len)
+        sent_output = change_reshape_decoder([sent_dec_out, sent_h_out, sent_c_out])
         sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
 
         init_states = (torch.unsqueeze(sentence_hidden_states, 0).contiguous(),
                        torch.unsqueeze(sentence_context_states, 0).contiguous())
         states = init_states, sentence_output_states
 
-
-        tok = torch.cat([torch.arange(decoder_len[0])] * len(decoder_len), dim=0).to(article_sents.device)
+        tok = torch.cat([torch.arange(max_sent)] * len(article_lens), dim=0).to(article_sents.device)
 
         outputs = None
         for i in range(max_words):
@@ -141,13 +140,11 @@ class HierarchicalSumm(nn.Module):
         #分成文章
         articles_output = []
         sent_num = 0
-        for i in range(len(decoder_len)):
-            sents = outputs[sent_num: sent_num + decoder_len[i]]
-            sent_num = sent_num + decoder_len[i]
+        for i in range(len(article_lens)):
+            sents = outputs[sent_num: sent_num + max_sent]
+            sent_num = sent_num + max_sent
             article = []
             for sent in sents:
-                if (sent[0] == EOA):
-                    break
                 sent_ids = []
                 for word in sent:
                     sent_ids.append(word.item())

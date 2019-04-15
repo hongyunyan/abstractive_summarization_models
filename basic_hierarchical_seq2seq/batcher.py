@@ -91,7 +91,7 @@ def batchify_fn(pad, start, end, eoa, data, cuda=True):
         del targets[num]
 
     source_article_len = [len(source) for source in sources]
-    target_article_len = [len(target) + 1 for target in targets]
+    target_article_len = [len(target) for target in targets]
 
     source_sent = [] 
     for source in sources:
@@ -108,8 +108,7 @@ def batchify_fn(pad, start, end, eoa, data, cuda=True):
             tar_ins.append([special_word_num + sent_num] + tar)
             tar_outs.append(tar + [end])
             sent_num += 1
-        tar_ins.append([special_word_num + sent_num])
-        tar_outs.append([eoa])
+        tar_outs[-1][-1] = eoa
 
     source = pad_batch_tensorize(source_sent, pad, cuda)
     tar_in = pad_batch_tensorize(tar_ins, pad, cuda)

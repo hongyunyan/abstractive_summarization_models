@@ -172,7 +172,7 @@ def change_reshape(input, input_lens):
         output[i] = logit_change_shape(mask, input[i])
     return output
 
-def change_reshape_decoder(input, input_lens):
+def change_reshape_decoder(input):
     #三维矩阵转为二维矩阵
     output = [None] * len(input)
 

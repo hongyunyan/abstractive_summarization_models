@@ -154,7 +154,7 @@ def main(args):
     with open(join(args.path, 'meta.json'), 'w') as f:
         json.dump(meta, f, indent=4)
 
-
+    torch.backends.cudnn.benchmark = True
     # prepare trainer
     val_fn = basic_validate(net, criterion)
     grad_fn = get_basic_grad_fn(net, args.clip)
