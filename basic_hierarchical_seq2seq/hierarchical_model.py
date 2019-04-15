@@ -33,7 +33,7 @@ class HierarchicalSumm(nn.Module):
         self._n_hidden = n_hidden
         self._self_attn = self_attn
         self._hi_encoder = hi_encoder
-        self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout)
+        self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout, embedding)
         self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
         self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force, embedding)
         self._HierarchicalWordToSentLSTM = HierarchicalWordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
@@ -372,7 +372,6 @@ class WordToSentLSTM(nn.Module):
     def lstm(self, sequence, seq_lens, init_enc_states, need_embedding = True):
         #输出为batch，hidden_dim
         batch_size = sequence.size(0)
-
         if (need_embedding):
             #注入embedding matrix
             sequence = sequence.transpose(0, 1)
@@ -389,6 +388,7 @@ class WordToSentLSTM(nn.Module):
         #扔进lstm
         packed_seq = nn.utils.rnn.pack_padded_sequence(emb_sequence, seq_lens)  
         packed_out, final_states = self._lstm_layer(packed_seq, init_enc_states) 
+
         lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out) 
 
         #再把位置调回来

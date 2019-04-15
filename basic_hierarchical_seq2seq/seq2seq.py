@@ -5,7 +5,7 @@ from torch.nn import init
 from rnn import lstm_encoder
 from rnn import MultiLayerLSTMCells
 from attention import step_attention
-from utils import sequence_mean, len_mask
+from utils import sequence_mean, len_mask, special_word_num
 
 from torch.nn import functional as F
 
@@ -14,8 +14,13 @@ INIT = 1e-2
 
 class Seq2SeqSumm(nn.Module):
     def __init__(self, vocab_size, emb_dim,
-                 n_hidden, bidirectional, n_layer, dropout=0.0):
+                 n_hidden, bidirectional, n_layer, dropout=0.0, embedding=None):
         super().__init__()
+
+        self._embedding = nn.Embedding(vocab_size, int(emb_dim/2), padding_idx=0)
+        if embedding is not None:
+            assert self._embedding.weight.size() == embedding.size()
+            self._embedding.weight.data.copy_(embedding)
 
         self._enc_lstm = nn.LSTM(
             emb_dim, n_hidden, n_layer,
@@ -35,7 +40,7 @@ class Seq2SeqSumm(nn.Module):
         output_dim = int(n_hidden/2)
 
         # vanillat lstm / LNlstm
-        self._dec_lstm = MultiLayerLSTMCells(output_dim, n_hidden, n_layer, dropout=dropout)
+        self._dec_lstm = MultiLayerLSTMCells(n_hidden, n_hidden, n_layer, dropout=dropout)
 
         # project encoder final states to decoder initial states
         enc_out_dim = n_hidden * (2 if bidirectional else 1)
@@ -55,7 +60,7 @@ class Seq2SeqSumm(nn.Module):
             nn.Linear(n_hidden, output_dim, bias=False)
         )
         # functional object for easier usage
-        self._decoder = AttentionalLSTMDecoder(self._dec_lstm, self._attn_wq, self._projection)
+        self._decoder = AttentionalLSTMDecoder(self._dec_lstm, self._attn_wq, self._projection, self._embedding)
     
     def forward(self, article, art_lens, tar_lens):
 
@@ -141,11 +146,12 @@ class Seq2SeqSumm(nn.Module):
         return outputs, attns
 
 class AttentionalLSTMDecoder(object):
-    def __init__(self, lstm, attn_w, projection):
+    def __init__(self, lstm, attn_w, projection, embedding):
         super().__init__()
         self._lstm = lstm
         self._attn_w = attn_w
         self._projection = projection
+        self._embedding = embedding
 
     def __call__(self, attention, init_states, tar_lens):
         states = init_states
@@ -154,8 +160,10 @@ class AttentionalLSTMDecoder(object):
         h_all = []
         c_all = []
 
+        #给sentence level的decoder输入标记这是第几句话的vec
         for i in range(max(tar_lens)):  #感觉是在模拟time stamp
-            states= self._step(states, attention)
+            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1)
+            states= self._step(tok, states, attention)
             (h,c), dec_out = states
 
             dec_out_all.append(dec_out)
@@ -170,10 +178,9 @@ class AttentionalLSTMDecoder(object):
         #返回sentence level的所有dec_out
         return dec_out_all, h_all, c_all #这样就是batch×length×n_hidden了
 
-    def _step(self, states, attention):
+    def _step(self, tok, states, attention):
         prev_states, prev_out = states
-        lstm_in = prev_out
-
+        lstm_in =  torch.cat([self._embedding(tok).squeeze(1), prev_out],dim=1)
         states = self._lstm(lstm_in, prev_states)
         lstm_out = states[0][-1]
         query = torch.mm(lstm_out, self._attn_w)
