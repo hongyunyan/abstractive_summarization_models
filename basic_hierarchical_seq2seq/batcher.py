@@ -74,7 +74,7 @@ def pad_batch_tensorize(inputs, pad, cuda=True):
 
 
 @curry
-def batchify_fn(pad, start, end, eoa, data, cuda=True):
+def batchify_fn(pad, start, end,  eoa, data, cuda=True):
     #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
 
     data.sort(key=lambda data:len(data[0]), reverse=True)
@@ -108,6 +108,7 @@ def batchify_fn(pad, start, end, eoa, data, cuda=True):
             tar_ins.append([special_word_num + sent_num] + tar)
             tar_outs.append(tar + [end])
             sent_num += 1
+        tar_ins[-1].append(end)
         tar_outs[-1].append(eoa)
 
     source = pad_batch_tensorize(source_sent, pad, cuda)
