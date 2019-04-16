@@ -12,7 +12,7 @@ import torch
 
 from hierarchical_model import HierarchicalSumm
 
-from utils import PAD, UNK, START, END
+from utils import PAD, UNK, START, END, EOA
 from batcher import conver2id, pad_batch_tensorize
 from data import CnnDmDataset
 
@@ -94,13 +94,14 @@ class Abstractor(object):
             abstract = []
             for sent in decs[i]:
                 abs_sent = []
-                for id_ in sent:
-                    if id_ == EOA:
-                        break
-                    if id_ == END:
-                        continue
+                for i in range(len(sent)):
+                    if sent[i] == END:
+                        if (i < len(sent) - 1 and sent[i+1] == EOA):
+                            break
+                        else:
+                            continue
                     else:
-                        abs_sent.append(self._id2word[id_])
+                        abs_sent.append(self._id2word[sent[i]])
                 abstract.append(abs_sent)
             dec_sents.append(abstract)
         return dec_sents
