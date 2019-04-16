@@ -108,8 +108,7 @@ def batchify_fn(pad, start, end,  eoa, data, cuda=True):
             tar_ins.append([special_word_num + sent_num] + tar)
             tar_outs.append(tar + [end])
             sent_num += 1
-        tar_ins[-1].append(end)
-        tar_outs[-1].append(eoa)
+        tar_outs[-1][-1] = eoa
 
     source = pad_batch_tensorize(source_sent, pad, cuda)
     tar_in = pad_batch_tensorize(tar_ins, pad, cuda)
