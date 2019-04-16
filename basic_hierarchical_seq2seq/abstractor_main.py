@@ -22,7 +22,7 @@ from batcher import convert_batch, batchify_fn
 from batcher import BucketedGenerater
 
 from utils import sequence_loss
-from utils import PAD, UNK, START, END, EOA
+from utils import PAD, UNK, START, END, EOA, nEOA
 from utils import make_vocab, make_embedding
 
 from hierarchical_model import HierarchicalSumm
@@ -85,7 +85,7 @@ def configure_training(opt, lr, clip_grad, lr_decay, batch_size):
 def build_batchers(word2id, cuda, debug):
     prepro = prepro_fn(args.max_word)
     batchify = compose(
-        batchify_fn(PAD, START, END, EOA, cuda=cuda),
+        batchify_fn(PAD, START, END, EOA, nEOA, cuda=cuda),
         convert_batch(UNK, word2id)
     )  #这玩意竟然是倒着开始执行的？？？？？？
 

@@ -28,7 +28,8 @@ UNK = 1
 START = 2
 END = 3
 EOA = 4 #end of article
-special_word_num = 5
+nEOA = 5
+special_word_num = 6
 #返回一个dict,key为word,value为序号, 并且在vocab中加入表示位置信息，max_sent_num为多少，就生成几个特殊的位置信息表示
 def make_vocab(wc, vocab_size, max_sent_num):
     word2id, id2word = {}, {}
@@ -37,9 +38,10 @@ def make_vocab(wc, vocab_size, max_sent_num):
     word2id['<start>'] = START
     word2id['<end>'] = END
     word2id['<eoa>'] = EOA
+    word2id['neoa>'] = nEOA
     for i in range(max_sent_num + 1):
-        word2id['sent_'+str(i)] = i + 5  #位置信息表示的对应序号为 5+第几句[从0开始计算句子]，补上最后一个eoa的句子
-    for i, (w, _) in enumerate(wc.most_common(vocab_size), 5 + max_sent_num + 1):  #most_common 返回一个list, list包含每个word和出现次数对 ,enumerate的第二个参数用来明确start iterator for index
+        word2id['sent_'+str(i)] = i + special_word_num  #位置信息表示的对应序号为 5+第几句[从0开始计算句子]，补上最后一个eoa的句子
+    for i, (w, _) in enumerate(wc.most_common(vocab_size), special_word_num + max_sent_num + 1):  #most_common 返回一个list, list包含每个word和出现次数对 ,enumerate的第二个参数用来明确start iterator for index
         word2id[w] = i
     return word2id
 

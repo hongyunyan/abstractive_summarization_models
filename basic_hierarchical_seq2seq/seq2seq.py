@@ -162,7 +162,7 @@ class AttentionalLSTMDecoder(object):
 
         #给sentence level的decoder输入标记这是第几句话的vec
         for i in range(max(tar_lens)):  #感觉是在模拟time stamp
-            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1)
+            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
             states= self._step(tok, states, attention)
             (h,c), dec_out = states
 

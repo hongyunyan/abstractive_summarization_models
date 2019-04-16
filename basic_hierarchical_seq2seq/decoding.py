@@ -92,17 +92,19 @@ class Abstractor(object):
         dec_sents = []
         for i, raw_words in enumerate(raw_article_sents):
             abstract = []
+            flag = True  #标志文章是否结束
             for sent in decs[i]:
                 abs_sent = []
                 for i in range(len(sent)):
                     if sent[i] == END:
                         if (i < len(sent) - 1 and sent[i+1] == EOA):
-                            break
-                        else:
-                            continue
+                            flag = False
+                        break    
                     else:
                         abs_sent.append(self._id2word[sent[i]])
                 abstract.append(abs_sent)
+                if (flag == False):
+                    break
             dec_sents.append(abstract)
         return dec_sents
 
