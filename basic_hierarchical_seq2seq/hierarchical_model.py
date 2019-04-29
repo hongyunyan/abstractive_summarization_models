@@ -104,7 +104,7 @@ class HierarchicalSumm(nn.Module):
              sent_output = self._WordToSentLSTM(article_sents, sent_lens)  
              hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
         else:
-            words_hidden_states, words_contexts = self._WordToSentLSTM(article_sents, sent_lens)  
+            words_hidden_states = self._WordToSentLSTM(article_sents, sent_lens)  
             if self._bidirectional:
                 hidden_states = torch.cat(words_hidden_states.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
             hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0) #从 [1,batch,512] 到 [batch,256]
