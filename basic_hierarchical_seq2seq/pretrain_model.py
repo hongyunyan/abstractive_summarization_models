@@ -21,20 +21,36 @@ from training import BasicPipeline, BasicTrainer
 
 from data import CnnDmDataset
 from batcher import coll_fn, prepro_fn
-from batcher import convert_batch, batchify_fn
+from batcher import convert_batch, pretrain_batchify_fn
 from batcher import BucketedGenerater
 
 from utils import sequence_loss
-from utils import PAD, UNK, START, END, EOA, nEOA
+from utils import PAD, UNK, START, END, EOA
 from utils import make_vocab, make_embedding
 
-from hierarchical_model import HierarchicalSumm
+from hierarchical_model import PretrainModel
+
+
+BUCKET_SIZE = 6400
+class MatchDataset(CnnDmDataset):
+    """ single article sentence -> single abstract sentence
+    (dataset created by greedily matching ROUGE)
+    """
+    def __init__(self, split):
+        super().__init__(split, args.data_path)
+
+    def __getitem__(self, i):
+        #改为返回source为原文,target为abstract,然后两个都是list？
+        js_data = super().__getitem__(i)
+        art_sents, abs_sents = (
+            js_data['artile'], js_data['abstract'])
+        return art_sents, abs_sents
 
 
 def build_batchers(word2id, cuda):
     prepro = prepro_fn(args.max_word)
     batchify = compose(
-        pretrain_batchify_fn(PAD, START, END, EOA, nEOA, cuda=cuda),
+        pretrain_batchify_fn(PAD, START, END, EOA, cuda=cuda),
         convert_batch(UNK, word2id)
     )  #这玩意竟然是倒着开始执行的？？？？？？
 
@@ -116,6 +132,10 @@ def pretrain(args):
     scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True,
                                   factor=args.decay, min_lr=0,
                                   patience=args.lr_p)
+    meta = {}
+    meta['net']           = 'pretrain_model'
+    meta['net_args']      = net_args
+    meta['traing_params'] = train_params
 
     if args.cuda:
         net = net.cuda()
@@ -155,19 +175,24 @@ if __name__ == '__main__':
                         help='learning rate')
     parser.add_argument('--decay', type=float, action='store', default=0.5,
                         help='learning rate decay ratio')
-
+    parser.add_argument('--max_target_sent', type=int, action='store', default=20,
+                        help='maximum sentence num in the summary')
 
 
     parser.add_argument('--max_word', type=int, action='store', default=100,
                         help='maximun words in a single article sentence')
-    parser.add_argument('--batch', type=int, action='store', default=16,
+    parser.add_argument('--batch', type=int, action='store', default=1,
                         help='the training batch size')
 
-    parser.add_argument('--ckpt_freq', type=int, action='store', default=10000,
+    parser.add_argument('--ckpt_freq', type=int, action='store', default=1000,
         help='number of update steps for checkpoint and validation')
 
     parser.add_argument('--patience', type=int, action='store', default=4,
                         help='patience for early stopping')
+    parser.add_argument('--lr_p', type=int, action='store', default=0,
+                        help='patience for learning rate decay')
+    parser.add_argument('--clip', type=float, action='store', default=2.0,
+                        help='gradient clipping')
 
     parser.add_argument('--no-cuda', action='store_true',
                         help='disable GPU training')

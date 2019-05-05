@@ -59,6 +59,7 @@ class Seq2SeqSumm(nn.Module):
             nn.Tanh(),
             nn.Linear(n_hidden, output_dim, bias=False)
         )
+
         # functional object for easier usage
         self._decoder = AttentionalLSTMDecoder(self._dec_lstm, self._attn_wq, self._projection, self._embedding)
     
@@ -117,7 +118,8 @@ class Seq2SeqSumm(nn.Module):
         dec_output = []
         states = init_dec_states
         for i in range(max_len):
-            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
+            #tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
+            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1)
             states = self._decoder.decode_step(tok, states, attention)
             (h,c), dec_out = states
 
@@ -163,7 +165,8 @@ class AttentionalLSTMDecoder(object):
 
         #给sentence level的decoder输入标记这是第几句话的vec
         for i in range(max(tar_lens)):  #感觉是在模拟time stamp
-            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
+            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1)
+            # tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
             states= self._step(tok, states, attention)
             (h,c), dec_out = states
 
@@ -182,6 +185,7 @@ class AttentionalLSTMDecoder(object):
     def _step(self, tok, states, attention):
         prev_states, prev_out = states
         lstm_in =  torch.cat([self._embedding(tok).squeeze(1), prev_out],dim=1)
+
         states = self._lstm(lstm_in, prev_states)
         lstm_out = states[0][-1]
         query = torch.mm(lstm_out, self._attn_w)

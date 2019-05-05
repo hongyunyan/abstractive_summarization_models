@@ -95,6 +95,7 @@ class BasicPipeline(object):
         # forward pass of model
         self._net.train()
         fw_args, bw_args = next(self._batches)
+        # print("fw_args\n", fw_args)
         #bw_args为 一个有所有单词的target的list
         net_out = self._net(*fw_args)  #34.31.30022
         #返回这轮生成的每个句子每个timestamp的输出
@@ -212,7 +213,7 @@ class BasicTrainer(object):
         return self._current_p >= self._patience
 
     def train(self):
-        print_iter = 100
+        print_iter = 10
         try:
             start = time()
             iter_start = time()

@@ -22,11 +22,11 @@ from batcher import convert_batch, batchify_fn
 from batcher import BucketedGenerater
 
 from utils import sequence_loss
-from utils import PAD, UNK, START, END, EOA, nEOA
+from utils import PAD, UNK, START, END, EOA
 from utils import make_vocab, make_embedding
 
 from hierarchical_model import HierarchicalSumm
-
+from decoding import load_best_ckpt
 
 import time
 
@@ -85,7 +85,7 @@ def configure_training(opt, lr, clip_grad, lr_decay, batch_size):
 def build_batchers(word2id, cuda):
     prepro = prepro_fn(args.max_word)
     batchify = compose(
-        batchify_fn(PAD, START, END, EOA, nEOA, cuda=cuda),
+        batchify_fn(PAD, START, END, EOA, cuda=cuda),
         convert_batch(UNK, word2id)
     )  #这玩意竟然是倒着开始执行的？？？？？？
 
@@ -154,11 +154,24 @@ def main(args):
     with open(join(args.path, 'meta.json'), 'w') as f:
         json.dump(meta, f, indent=4)
 
+    abs_ckpt = load_best_ckpt(args.pretrain_path)
+    net.load_state_dict(abs_ckpt, strict=False) #只导入用到的参数
+
     torch.backends.cudnn.benchmark = True
     # prepare trainer
     val_fn = basic_validate(net, criterion)
     grad_fn = get_basic_grad_fn(net, args.clip)
-    optimizer = optim.Adam(net.parameters(), **train_params['optimizer'][1])
+    
+
+    #将pretrain的parameters和非pretrain的parameters区分lr
+    ignored_params = list(map(id, net._WordToSentLSTM.parameters())) + list(map(id, net._SentToWordLSTM.parameters()))
+    base_params = filter(lambda p: id(p) not in ignored_params, net.parameters())
+
+    different_lr_params = [{'params': base_params},
+                           {'params': net._WordToSentLSTM.parameters(), 'lr': 1e-4},
+                           {'params': net._SentToWordLSTM.parameters(), 'lr': 1e-4}]
+
+    optimizer = optim.Adam(different_lr_params, **train_params['optimizer'][1])
     scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True,
                                   factor=args.decay, min_lr=0,
                                   patience=args.lr_p)
@@ -180,6 +193,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='training of the abstractor (ML)'
     )
+    parser.add_argument('--pretrain_path', required=True, help='pretrain of the model')  #强制要求有pretrain吧
 
     parser.add_argument('--path', required=True, help='root of the model')
 

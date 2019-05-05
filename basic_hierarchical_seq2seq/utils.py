@@ -94,7 +94,7 @@ def sequence_mean(sequence, seq_lens, dim=1):
 def sequence_loss(logits, targets, xent_fn=None, pad_idx=0):
     """ functional interface of SequenceLoss"""
     assert logits.size()[:-1] == targets.size()
-
+        
     mask = targets != pad_idx
 
     target = targets.masked_select(mask)

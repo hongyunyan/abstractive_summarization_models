@@ -32,15 +32,21 @@ class PretrainModel(nn.Module):
         self._dec_h = nn.Linear(enc_out_dim, n_hidden, bias=False)
         self._n_hidden = n_hidden
 
-        self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
-        self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force, embedding)
-
+        self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
+        self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
 
     def forward(self, source_sents, source_length, tar_inputs, target_length):
         sent_output = self._WordToSentLSTM(source_sents, source_length)  
-        hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
 
-        self._SentToWordLSTM(hidden_states, tar_inputs)
+        if self._bidirectional:
+            hidden_states = torch.cat(sent_output.chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
+
+        hidden_states = torch.stack([self._dec_h(h) for h in hidden_states], dim=0)[-1] #从 [1,batch,512] 到 [batch,256]
+
+        # hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
+
+        logit = self._SentToWordLSTM(hidden_states, tar_inputs, None)
+        return logit
 
 
 class HierarchicalSumm(nn.Module):
@@ -51,6 +57,7 @@ class HierarchicalSumm(nn.Module):
         self._bidirectional = bidirectional
         enc_out_dim = n_hidden * (2 if bidirectional else 1)
         self._dec_h = nn.Linear(enc_out_dim, n_hidden, bias=False)
+        self._hidden_output = nn.Linear(emb_dim, n_hidden, bias=False)
         self._n_hidden = n_hidden
         self._self_attn = self_attn
         self._hi_encoder = hi_encoder
@@ -60,7 +67,6 @@ class HierarchicalSumm(nn.Module):
         self._HierarchicalWordToSentLSTM = HierarchicalWordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
     
     def forward(self, article_sents, article_lens, sent_lens,  abstract_sents, abs_lens):  
-        start_timestamp = time()
         #传给第一个函数的article是一个n个句子×m个word， art_lens为每个句子的长度的n维矩阵，应该还要再有一个矩阵，记录每个article有几个句子，这样可以将输出的hidden state转成对应的格式
         #先传给词到句子的那层, 输入source文本以及source每条文本的长度，返回每一句末尾的hidden_states和c值组成的矩阵,并且返回hidden_states中，每个文本的长度
 
@@ -70,13 +76,10 @@ class HierarchicalSumm(nn.Module):
 
         if (self._self_attn):
             sent_output = wordToSentModel(article_sents, sent_lens)  
-            wordtosent_timestamp = time()
 
             hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
         else:
             words_hidden_states = wordToSentModel(article_sents, sent_lens)  
-            wordtosent_timestamp = time()
-
             #转格式！
             #不会转格式啊嗷嗷啊！！！！
             #坑仿佛填上了！！ 根据上面那个batch，256，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
@@ -95,25 +98,18 @@ class HierarchicalSumm(nn.Module):
         
         article_hidden_states = change_shape(hidden_states, article_lens, pad)
         
-        change_shape_timestamp = time()
         #然后句子的输入开始过最基本的seq2seq层
         sent_dec_out, sent_h_out, sent_c_out = self._Seq2SeqSumm(article_hidden_states, article_lens, abs_lens)
-        seq2seq_timestamp = time()
+
         #感觉这边要设置一下，如何让sent数目输出的是正确的？？？？加入loss？？？？
         #坑坑坑来来来转格式了，从文章数×target句子长×256 到所有句子数×256  sentence_hidden_states!!
         sent_output = change_reshape([sent_dec_out, sent_h_out, sent_c_out], abs_lens)
         sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
-        change_reshape_timestamp = time()
+        
+        sentence_output_states = torch.stack([self._hidden_output(output) for output in sentence_output_states], dim=0)
+
         #获得句子的每个hidden以后，一生多 生成每个句子, 然后每个生成的具体句子跟原始的target做loss，返回loss
-        logit = self._SentToWordLSTM(sentence_output_states, abstract_sents, sentence_hidden_states, sentence_context_states)
-
-        senttoword_timestamp = time()
-
-        # print("word_to_sent_timestamp\n", wordtosent_timestamp - start_timestamp)
-        # print("change_shape_timestamp\n", change_shape_timestamp - wordtosent_timestamp)
-        # print("seq2seq_timestamp\n", seq2seq_timestamp - change_shape_timestamp)
-        # print("change_reshape_timestamp\n", change_reshape_timestamp - seq2seq_timestamp)
-        # print("sent_to_word_timestamp\n", senttoword_timestamp - change_reshape_timestamp)
+        logit = self._SentToWordLSTM(sentence_output_states, abstract_sents, sentence_hidden_states)
 
         return logit
     
@@ -272,7 +268,7 @@ class HierarchicalSumm(nn.Module):
 class SentToWordLSTM(nn.Module):
     def __init__(self, emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force,embedding):
         super().__init__()
-        self._dec_lstm = MultiLayerLSTMCells(n_hidden, n_hidden, n_layer, dropout=dropout)
+        self._dec_lstm = MultiLayerLSTMCells(emb_dim, n_hidden, n_layer, dropout=dropout)
         self._sampling_teaching_force = sampling_teaching_force
         self._embedding = nn.Embedding(vocab_size, emb_dim, padding_idx=0)
         if embedding is not None:
@@ -286,17 +282,29 @@ class SentToWordLSTM(nn.Module):
         )
         self._teaching_force_ratio = 1
         self._step_num = 0
+        
+        self._init_dec_h = nn.Parameter(
+            torch.Tensor(n_layer, n_hidden)
+        )
+        # self._init_dec_c = nn.Parameter(
+        #     torch.Tensor(state_layer, n_hidden)
+        # )
+        init.uniform_(self._init_dec_h, -INIT, INIT)
+        # init.uniform_(self._init_enc_c, -INIT, INIT)
 
-    def forward(self, input_hidden_states, target, init_h, init_c):
+    def forward(self, input_hidden_states, target, init_h):
         self._teaching_force_ratio = pow(0.999995, self._step_num)
         self._step_num += 1
         
         max_len = target.size()[1]
-
+        
+        if (init_h is None):
+            init_h = self._init_dec_h.repeat(input_hidden_states.size()[0], 1)
+      
         init_states = (torch.unsqueeze(init_h, 0).contiguous(),
-                       torch.unsqueeze(init_c, 0).contiguous())  #传闻中变成连续块的函数
+                       torch.unsqueeze(input_hidden_states, 0).contiguous())  #传闻中变成连续块的函数
 
-        states = init_states, input_hidden_states  #这边瞎糊的
+        states = init_states   #, input_hidden_states  这边瞎糊的
         logits = [] 
         for i in range(max_len):
             #如果利用scheduled sampling方法，随机选择用真实还是生成的tok作为输入。
@@ -318,16 +326,22 @@ class SentToWordLSTM(nn.Module):
 
     def _step(self, tok, states):
         
-        prev_states, prev_dec_out = states
-        lstm_in = torch.cat([self._embedding(tok).squeeze(1), prev_dec_out], dim=1)
+        h, c = states
+        prev_states = states
+        # lstm_in = torch.cat([self._embedding(tok).squeeze(1), prev_dec_out], dim=1) #这是原来的写法
+        # states = self._dec_lstm(lstm_in, prev_states)
+
+        lstm_in = self._embedding(tok).squeeze(1)
+
         states = self._dec_lstm(lstm_in, prev_states)
+
         lstm_out = states[0][-1]
         dec_out = self._projection(lstm_out)
 
         logit = torch.mm(dec_out, self._embedding.weight.t())
         logit = torch.log(F.softmax(logit, dim=-1) + 1e-8)
         
-        return logit, (states, dec_out)
+        return logit, (states[0], c)
 
     def topk_step(self, tok, states, beam_size):
         """tok:[BB, B], states ([L, BB, B, D]*2, [BB, B, D])"""
