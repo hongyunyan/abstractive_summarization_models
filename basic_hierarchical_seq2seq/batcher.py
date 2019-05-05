@@ -72,6 +72,32 @@ def pad_batch_tensorize(inputs, pad, cuda=True):
         tensor[i, :len(ids)] = tensor_type(ids)
     return tensor
 
+@curry
+def pretrain_batchify_fn(pad, start, end,  eoa, data, cuda=True):
+    #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
+
+    sources, targets = list(map(list, unzip(data)))
+
+    source_sents = [sent for article in sources for sent in article]
+    target_sents = [sent for article in targets for sent in article]
+
+    sents = source_sents + target_sents
+
+    tar_ins = [[start] + sent for sent in sents] 
+    tar_outs = [sent + [end] for sent in sents]
+
+    source_length = [len(sent) for sent in sents]
+    tar_length = [length + 1 for length in source_length]
+
+    source = pad_batch_tensorize(sents, pad, cuda)
+    tar_in = pad_batch_tensorize(tar_ins, pad, cuda)
+    target = pad_batch_tensorize(tar_outs, pad, cuda)
+
+    fw_args = (source, source_length, tar_in, tar_length)
+    loss_args = (target, )
+    return fw_args, loss_args
+
+
 
 @curry
 def batchify_fn(pad, start, end,  eoa, data, cuda=True):

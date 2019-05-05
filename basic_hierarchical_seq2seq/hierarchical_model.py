@@ -22,6 +22,27 @@ import torch.multiprocessing as mp
 
 INIT = 1e-2
 
+class PretrainModel(nn.Module):
+    def __init__(self, vocab_size, emb_dim, n_hidden, bidirectional, n_layer, embedding, dropout=0.0):
+
+        super().__init__()
+
+        self._bidirectional = bidirectional
+        enc_out_dim = n_hidden * (2 if bidirectional else 1)
+        self._dec_h = nn.Linear(enc_out_dim, n_hidden, bias=False)
+        self._n_hidden = n_hidden
+
+        self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
+        self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force, embedding)
+
+
+    def forward(self, source_sents, source_length, tar_inputs, target_length):
+        sent_output = self._WordToSentLSTM(source_sents, source_length)  
+        hidden_states = torch.stack([self._dec_h(h) for h in sent_output], dim=0) #从 [batch,512] 到 [batch,256]
+
+        self._SentToWordLSTM(hidden_states, tar_inputs)
+
+
 class HierarchicalSumm(nn.Module):
     def __init__(self, vocab_size, emb_dim,
                  n_hidden, bidirectional, n_layer, sampling_teaching_force, self_attn, hi_encoder, embedding, dropout=0.0):
