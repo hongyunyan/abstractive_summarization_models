@@ -139,15 +139,19 @@ class HierarchicalSumm(nn.Module):
         sent_output = change_reshape_decoder([sent_dec_out, sent_h_out, sent_c_out])
         sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
 
+        sentence_output_states = torch.stack([self._hidden_output(output) for output in sentence_output_states], dim=0)
+
         init_states = (torch.unsqueeze(sentence_hidden_states, 0).contiguous(),
-                       torch.unsqueeze(sentence_context_states, 0).contiguous())
-        states = init_states, sentence_output_states
+                       torch.unsqueeze(sentence_output_states, 0).contiguous())
+        states = init_states
+        h, c = init_states
 
         tok = torch.cat([torch.arange(max_sent)] * len(article_lens), dim=0).to(article_sents.device)
 
         outputs = None
         for i in range(max_words):
             logit, states = self._SentToWordLSTM._step(tok, states)
+            states = (states[0], c)
             tok = torch.max(logit, dim=1, keepdim=True)[1]  #挣扎一下维度对不对
             if (i == 0): 
                 outputs = torch.unsqueeze(tok[:,0] , 1)
