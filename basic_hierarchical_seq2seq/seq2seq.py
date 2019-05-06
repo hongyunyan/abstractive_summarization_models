@@ -94,7 +94,7 @@ class Seq2SeqSumm(nn.Module):
             )
 
         init_h = torch.stack([self._dec_h(s)
-                              for s in final_states[0]], dim=0) # 把[1,34,512]过一个linear 变成【1,34,256】，大概就是不想用原生的lstm输出，要经过改变?
+                              for s in final_states[0]], dim=0) # 把[1,34,512]过一个linear 变成【1,34,256】
         init_c = torch.stack([self._dec_c(s)
                               for s in final_states[1]], dim=0)  #(1,34,256)
         init_dec_states = (init_h, init_c)

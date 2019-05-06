@@ -136,7 +136,7 @@ if __name__ == '__main__':
                         help='maximun sent to be decoded for the abstractor')
     parser.add_argument('--sampling_teaching_force', type=bool, action='store', default=False, 
                         help='choose whether use scheduled sampling for teaching force')
-    parser.add_argument('--no-cuda', action='store_true',
+    parser.add_argument('--no-cuda', type=bool, action='store', default=False,
                         help='disable GPU training')
                         
     args = parser.parse_args()

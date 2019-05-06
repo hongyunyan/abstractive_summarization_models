@@ -241,7 +241,7 @@ if __name__ == '__main__':
     parser.add_argument('--patience', type=int, action='store', default=4,
                         help='patience for early stopping')
 
-    parser.add_argument('--no-cuda', action='store_true',
+    parser.add_argument('--no-cuda', type=bool, action='store', default=False,
                         help='disable GPU training')
     args = parser.parse_args()
     args.bi = not args.no_bi

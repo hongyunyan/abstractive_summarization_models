@@ -194,7 +194,7 @@ if __name__ == '__main__':
     parser.add_argument('--clip', type=float, action='store', default=2.0,
                         help='gradient clipping')
 
-    parser.add_argument('--no-cuda', action='store_true',
+    parser.add_argument('--no-cuda', type=bool, action='store', default=False,
                         help='disable GPU training')
     args = parser.parse_args()
     args.bi = not args.no_bi
