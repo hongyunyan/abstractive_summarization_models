@@ -116,18 +116,14 @@ class BeamAbstractor(Abstractor):
         dec_args = self._prepro(raw_article_sents)
         dec_args = (*dec_args, END, beam_size, diverse)
         decs = self._net.batched_beam_search(*dec_args)
-        # all_beams = list(starmap(_process_beam(self._id2word),
-        #                          zip(all_beams, raw_article_sents)))
+
         dec_sents = []
         for i, raw_words in enumerate(raw_article_sents):
             abstract = []
             for sent in decs[i]:
                 abs_sent = []
                 for id_ in sent:
-                    if id_ == END:
-                        continue
-                    else:
-                        abs_sent.append(self._id2word[id_])
+                    abs_sent.append(self._id2word[id_])
                 abstract.append(abs_sent)
             dec_sents.append(abstract)
         return dec_sents
