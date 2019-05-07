@@ -77,6 +77,19 @@ def pretrain_batchify_fn(pad, start, end,  eoa, data, cuda=True):
     #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
 
     sources, targets = list(map(list, unzip(data)))
+    
+    #删除targets中abs长度大于20的文本
+    del_num = []
+    for i in range(len(sources)):
+        if ((len(targets[i]) > 20) or (len(sources[i])>50)):
+            del_num.append(i)
+
+    if (len(del_num) == len(sources)):
+        return None,None
+
+    for num in reversed(del_num):
+        del sources[num]
+        del targets[num]
 
     source_sents = [sent for article in sources for sent in article]
     target_sents = [sent for article in targets for sent in article]

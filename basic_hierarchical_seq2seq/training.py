@@ -35,6 +35,8 @@ def compute_loss(net, criterion, fw_args, loss_args):
 
 @curry
 def val_step(loss_step, fw_args, loss_args):
+    if (fw_args is None):
+        return 0,0
     loss = loss_step(fw_args, loss_args)
     return loss.size(0), loss.sum().item()
 
@@ -95,7 +97,9 @@ class BasicPipeline(object):
         # forward pass of model
         self._net.train()
         fw_args, bw_args = next(self._batches)
-        # print("fw_args\n", fw_args)
+        while (fw_args is None):
+            fw_args, bw_args = next(self._batches)
+
         #bw_args为 一个有所有单词的target的list
         net_out = self._net(*fw_args)  #34.31.30022
         #返回这轮生成的每个句子每个timestamp的输出
@@ -213,7 +217,7 @@ class BasicTrainer(object):
         return self._current_p >= self._patience
 
     def train(self):
-        print_iter = 10
+        print_iter = 100
         try:
             start = time()
             iter_start = time()
