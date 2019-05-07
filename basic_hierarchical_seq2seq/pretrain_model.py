@@ -29,7 +29,7 @@ from utils import PAD, UNK, START, END, EOA
 from utils import make_vocab, make_embedding
 
 from hierarchical_model import PretrainModel
-
+from gmem_occumpy import occumpy_mem
 
 BUCKET_SIZE = 6400
 class MatchDataset(CnnDmDataset):
@@ -196,10 +196,15 @@ if __name__ == '__main__':
 
     parser.add_argument('--no-cuda', type=bool, action='store', default=False,
                         help='disable GPU training')
+    parser.add_argument('--cuda_device', type=int, action='store', default=0, help='choose gpu')
+
     args = parser.parse_args()
     args.bi = not args.no_bi
     args.cuda = torch.cuda.is_available() and not args.no_cuda
 
     print(args)
+    
+    if (args.cuda == True):
+        occumpy_mem(args.cuda_device)
 
     pretrain(args)

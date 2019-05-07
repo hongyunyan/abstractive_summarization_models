@@ -29,6 +29,7 @@ from hierarchical_model import HierarchicalSumm
 from decoding import load_best_ckpt
 
 import time
+from gmem_occumpy import occumpy_mem
 
 BUCKET_SIZE = 6400
 
@@ -243,9 +244,14 @@ if __name__ == '__main__':
 
     parser.add_argument('--no-cuda', type=bool, action='store', default=False,
                         help='disable GPU training')
+    parser.add_argument('--cuda_device', type=int, action='store', default=0, help='choose gpu')
+
     args = parser.parse_args()
     args.bi = not args.no_bi
     args.cuda = torch.cuda.is_available() and not args.no_cuda
+
+    if (args.cuda == True):
+        occumpy_mem(args.cuda_device)
 
     print(args)
 
