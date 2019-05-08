@@ -128,22 +128,6 @@ class BeamAbstractor(Abstractor):
             dec_sents.append(abstract)
         return dec_sents
 
-@curry
-def _process_beam(id2word, beam, art_sent):
-    def process_hyp(hyp):
-        seq = []
-        for i, attn in zip(hyp.sequence[1:], hyp.attns[:-1]):
-            if i == UNK:
-                copy_word = art_sent[max(range(len(art_sent)),
-                                         key=lambda j: attn[j].item())]
-                seq.append(copy_word)
-            else:
-                seq.append(id2word[i])
-        hyp.sequence = seq
-        del hyp.hists
-        del hyp.attns
-        return hyp
-    return list(map(process_hyp, beam))
 
 class ArticleBatcher(object):
     def __init__(self, word2id, cuda=True):

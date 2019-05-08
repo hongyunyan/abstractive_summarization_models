@@ -65,16 +65,6 @@ def decode(save_path, model_dir, data_path, split, batch_size,
                     f.write(make_html_safe('\n'.join(decoded_sents)))
                 i += 1
                 print(decoded_sents)
-            # for j, n in ext_inds:
-            #     decoded_sents = [' '.join(dec) for dec in dec_outs[j:j+n]]
-            #     with open(join(save_path, 'output/{}.dec'.format(i)),
-            #               'w') as f:
-            #         f.write(make_html_safe('\n'.join(decoded_sents)))
-            #     i += 1
-            #     print('{}/{} ({:.2f}%) decoded in {} seconds\r'.format(
-            #         i, n_data, i/n_data*100,
-            #         timedelta(seconds=int(time()-start))
-            #     ), end='')
     print()
 
 _PRUNE = defaultdict(
@@ -126,13 +116,13 @@ if __name__ == '__main__':
     data.add_argument('--test', action='store_true', help='use test set')
 
     # decode options
-    parser.add_argument('--batch', type=int, action='store', default=32,
+    parser.add_argument('--batch', type=int, action='store', default=1,
                         help='batch size of faster decoding')
     parser.add_argument('--beam', type=int, action='store', default=1,
                         help='beam size for beam-search (reranking included)')
     parser.add_argument('--max_dec_word', type=int, action='store', default=50,
                         help='maximun words to be decoded for the abstractor')
-    parser.add_argument('--max_dec_sent', type=int, action='store', default=10,
+    parser.add_argument('--max_dec_sent', type=int, action='store', default=20,
                         help='maximun sent to be decoded for the abstractor')
     parser.add_argument('--sampling_teaching_force', type=bool, action='store', default=False, 
                         help='choose whether use scheduled sampling for teaching force')

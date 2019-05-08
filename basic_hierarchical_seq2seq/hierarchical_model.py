@@ -109,7 +109,7 @@ class HierarchicalSumm(nn.Module):
 
         states = init_states
 
-        tok = torch.cat([torch.arange(max_sent)] * len(article_lens), dim=0).to(article_sents.device)
+        tok = torch.cat([torch.arange(max_sent) + special_word_num] * len(article_lens), dim=0).to(article_sents.device)
 
         outputs = None
         for i in range(max_words):
@@ -161,18 +161,20 @@ class HierarchicalSumm(nn.Module):
         #这边开始糊了一版beam_search，大致思想是我永远更新一个([beam_sent*beam_size]*batch_size)的一个list称为beams;最终目的是获得一个results lists，results中每个list有beam_size个完整的句子
         #首先在每个step，我先把beams中的所有内容变成一个矩阵，让他经过step去生成下一个词，获得新的context，states啊bla的
         #然后我就更新每句话对应的result和beams，
-        beams = [[Beam(tokens=[i%max_sent],
+        beams = [[Beam(tokens=[i%max_sent + special_word_num],
                       log_probs=[0.0],
                       state=(sentence_hidden_states[i], sentence_context_states[i]),
                       context = sentence_output_states[i]) for j in range(beam_size)]
                 for i in range(batch_size)] #新建batch_size的beams,外层batch_size个，内层beam_size个
-        
-        results = [[]] * batch_size
 
+        results = []
+        for i in range(batch_size):
+            results.append([])
+        
         for step in range(max_words):
             stop_flag = True
             latest_tokens = [sent.latest_token for item_beam in beams for sent in item_beam]
-            tok = torch.tensor(latest_tokens)
+            tok = torch.tensor(latest_tokens).cuda()
 
             all_state_h = []
             all_state_c = []
@@ -190,12 +192,14 @@ class HierarchicalSumm(nn.Module):
             logit, states = self._SentToWordLSTM._step(tok, states, context)
             topk_log_probs, topk_ids = logit.topk(beam_size) #确认一下dim是否正确
 
-            all_beams = [[]] * batch_size
+            all_beams = []
+            for i in range(batch_size):
+                all_beams.append([])
 
             for i in range(batch_size):
                 for j in range(beam_size):
                     sent = beams[i][j]
-                    state_i = (states[0][i*beam_size+j], states[1][i*beam_size+j])
+                    state_i = (states[0][0][i*beam_size+j], states[1][0][i*beam_size+j])
                     context_i = context[i*beam_size+j]
 
                     for k in range(beam_size):
@@ -205,7 +209,10 @@ class HierarchicalSumm(nn.Module):
                                         context=context_i)
                         all_beams[i].append(new_beam)
 
-            beams = [[]] * batch_size
+            beams = []
+            for i in range(batch_size):
+                beams.append([])
+
             for i in range(batch_size):
                 for sent in self.sort_beams(all_beams[i]):
                     if (sent.latest_token == EOA or sent.latest_token == eos):
@@ -214,22 +221,30 @@ class HierarchicalSumm(nn.Module):
                         beams[i].append(sent)
                     if (len(beams[i]) == beam_size):
                         if (len(results[i]) < beam_size):
-                            stop_flag == False 
+                            stop_flag = False 
                         break
+
+                if (len(results[i]) > beam_size):
+                    results[i] = self.sort_beams(results[i])[:beam_size]
             if (stop_flag == True):
                 break
-
+                
         best_sent = []
         for i in range(batch_size):
-            best_sent.append(self.sort_beams(results[i])[0])
+            if (len(results[i])==0):
+                best_sent.append(None)
+            else:
+                best_sent.append(self.sort_beams(results[i])[0])
         
         
         articles_output = []
         for i in range(article_num):
             article = []
             for j in range(max_sent):
-                article.append(best_sent[j][:-1])
-                if best_sent[j][-1] == EOA:
+                if (best_sent[j] is None):
+                    continue
+                article.append(best_sent[j].tokens[1:-1])
+                if best_sent[j].tokens[-1] == EOA:
                     break
             articles_output.append(article)
         return articles_output
@@ -237,77 +252,6 @@ class HierarchicalSumm(nn.Module):
         
         
 
-
-        # batch_size = sentence_output_states.size()[0]
-
-        # h = sentence_hidden_states.unsqueeze(0)
-        # c = sentence_context_states.unsqueeze(0)
-        # prev = sentence_output_states
-
-        # all_beams = [bs.init_beam(start.to(article_sents.device), (h[:, i, :], c[:, i, :], prev[i])) for i in range(batch_size)]
-        # finished_beams = [[] for _ in range(batch_size)]
-        # outputs = [None for _ in range(batch_size)]
-        # for t in range(max_words):
-        #     toks = []
-        #     all_states = []
-        #     for beam in filter(bool, all_beams):
-        #         token, states = bs.pack_beam(beam)
-        #         toks.append(token)
-        #         all_states.append(states)
-        #     token = torch.stack(toks, dim=1)
-        #     states = ((torch.stack([h for (h, _), _ in all_states], dim=2),
-        #                torch.stack([c for (_, c), _ in all_states], dim=2)),
-        #                torch.stack([prev for _, prev in all_states], dim=1))
-        #     # token.masked_fill_(token >= vsize, unk)
-            
-        #     topk, k_logit, states = self._SentToWordLSTM.topk_step(token, states, beam_size)
-
-
-        #     batch_i = 0
-        #     for i, (beam, finished) in enumerate(zip(all_beams,
-        #                                              finished_beams)):
-        #         if not beam:
-        #             continue
-        #         finished, new_beam = bs.next_search_beam(
-        #             beam, beam_size, finished, eos, EOA, 
-        #             topk[:, batch_i, :], k_logit[:, batch_i, :],
-        #             (states[0][0][:, :, batch_i, :],
-        #              states[0][1][:, :, batch_i, :],
-        #              states[1][:, batch_i, :])
-        #         )
-        #         batch_i += 1
-        #         if len(finished) >= beam_size:
-        #             all_beams[i] = []
-        #             outputs[i] = finished[:beam_size]
-        #         else:
-        #             all_beams[i] = new_beam
-        #             finished_beams[i] = finished
-        #     if all(outputs):
-        #         break
-        # else:
-        #     for i, (o, f, b) in enumerate(zip(outputs, finished_beams, all_beams)):
-        #         if o is None:
-        #             outputs[i] = (f+b)[:beam_size]
-
-        # #这个神奇的output里面有finish的beam size的结果
-
-        # articles_output = []
-        # sent_num = 0
-        # for i in range(len(decoder_len)):
-        #     sents = outputs[sent_num: sent_num + decoder_len[i]]
-        #     sent_num = sent_num + decoder_len[i]
-        #     article = []
-        #     for sent in sents:
-        #         if (sent[0].sequence[0] == EOA):
-        #             break
-        #         sent_ids = []
-        #         for word in sent[0].sequence:
-        #             sent_ids.append(word)
-        #         article.append(sent_ids)
-        #     articles_output.append(article)
-
-
-        # return articles_output
 
 
 
