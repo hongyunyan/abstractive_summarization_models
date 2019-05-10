@@ -114,6 +114,7 @@ class HierarchicalSumm(nn.Module):
         outputs = None
         for i in range(max_words):
             logit, states = self._SentToWordLSTM._step(tok, states, sentence_output_states)
+            logit[:, special_word_num: max_sent + special_word_num] = -10000 #刨除可能出现的sent_
             tok = torch.max(logit, dim=1, keepdim=True)[1]  #挣扎一下维度对不对
             if (i == 0): 
                 outputs = torch.unsqueeze(tok[:,0] , 1)

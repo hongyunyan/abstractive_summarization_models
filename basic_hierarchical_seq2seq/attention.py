@@ -2,9 +2,12 @@
 from torch.nn import functional as F
 
 
-def dot_attention_score(key, query):
-    """[B, Tk, D], [(Bs), B, Tq, D] -> [(Bs), B, Tq, Tk]"""
-    return query.matmul(key.transpose(1, 2))
+def dot_attention_score(key, query, converage, projection):
+    if converage is None:
+        result = projection(key + query).view(-1, key.size()[1]).unsqueeze(-2)
+    else:
+        result = projection(key + query+ converage).view(-1, key.size()[1]).unsqueeze(-2)
+    return result
 
 def prob_normalize(score, mask):
     """ [(...), T]
@@ -19,10 +22,12 @@ def attention_aggregate(value, score):
     return output
 
 
-def step_attention(query, key, value, mem_mask=None):
+def step_attention(query, key, value, converage, projection, attn_wc, mem_mask=None):
     """ query[(Bs), B, D], key[B, T, D], value[B, T, D]"""
     #应该就是说原来那个矩阵里面存在为0的地方，也就是说没有target输出的地方，给他填一个数，再做softmax？可是为啥呢
-    score = dot_attention_score(key, query.unsqueeze(-2)) #34,1,81
+    if converage is not None:
+        converage = attn_wc(converage.unsqueeze(-1))
+    score = dot_attention_score(key, query.unsqueeze(-2), converage, projection) #34,1,81
     if mem_mask is None:
         norm_score = F.softmax(score, dim=-1)
     else:
