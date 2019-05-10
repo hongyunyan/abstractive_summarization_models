@@ -200,7 +200,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--data_path', required=True, help='root of the dataset')
 
-    parser.add_argument('--vsize', type=int, action='store', default=30000,
+    parser.add_argument('--vsize', type=int, action='store', default=50000,
                         help='vocabulary size')
     parser.add_argument('--emb_dim', type=int, action='store', default=128,
                         help='the dimension of word embedding')
