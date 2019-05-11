@@ -1,6 +1,6 @@
 """ attention functions """
 from torch.nn import functional as F
-
+import torch
 
 def dot_attention_score(key, query, converage, projection):
     if converage is None:
@@ -26,11 +26,21 @@ def step_attention(query, key, value, converage, projection, attn_wc, mem_mask=N
     """ query[(Bs), B, D], key[B, T, D], value[B, T, D]"""
     #应该就是说原来那个矩阵里面存在为0的地方，也就是说没有target输出的地方，给他填一个数，再做softmax？可是为啥呢
     if converage is not None:
-        converage = attn_wc(converage.unsqueeze(-1))
-    score = dot_attention_score(key, query.unsqueeze(-2), converage, projection) #34,1,81
+        converage_value = attn_wc(converage.unsqueeze(-1))
+    else:
+        converage_value = None
+    score = dot_attention_score(key, query.unsqueeze(-2), converage_value, projection) #34,1,81
     if mem_mask is None:
         norm_score = F.softmax(score, dim=-1)
     else:
         norm_score = prob_normalize(score, mem_mask)  #也就是给每个位置的词语一个weight
     output = attention_aggregate(value, norm_score)
-    return output.squeeze(-2), norm_score.squeeze(-2)
+    if converage is None:
+        min_attn = norm_score
+    else:
+        min_attn = torch.min(norm_score.squeeze(-2), converage)
+    
+    min_attn = torch.sum(min_attn.squeeze(-2), 1)
+
+    #计算converage 和score最小值加和的值，返回
+    return output.squeeze(-2), norm_score.squeeze(-2), min_attn

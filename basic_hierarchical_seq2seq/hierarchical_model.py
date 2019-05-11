@@ -8,7 +8,7 @@ from torch.nn import init
 from rnn import lstm_encoder
 from rnn import MultiLayerLSTMCells
 from attention import step_attention
-from utils import sequence_mean, len_mask, change_shape, change_reshape, change_reshape_decoder
+from utils import sequence_mean, len_mask, change_shape, change_reshape, change_reshape_decoder, change_loss_shape
 
 from torch.nn import functional as F
 from utils import reorder_sequence, reorder_lstm_states
@@ -75,17 +75,18 @@ class HierarchicalSumm(nn.Module):
         article_hidden_states = change_shape(sent_vec, article_lens, pad)
         
         #然后句子的输入开始过最基本的seq2seq层
-        sent_dec_out, sent_h_out, sent_c_out = self._Seq2SeqSumm(article_hidden_states, article_lens, abs_lens)
-
+        (sent_dec_out, sent_h_out, sent_c_out), loss_part_all = self._Seq2SeqSumm(article_hidden_states, article_lens, abs_lens)
         #感觉这边要设置一下，如何让sent数目输出的是正确的？？？？加入loss？？？？
         #坑坑坑来来来转格式了，从文章数×target句子长×256 到所有句子数×256  sentence_hidden_states!!
         sent_output = change_reshape([sent_dec_out, sent_h_out, sent_c_out], abs_lens)
-        sentence_output_states, sentence_hidden_states, sentence_context_states = sent_output[:]
+        sentence_output_states, sentence_hidden_states, sentence_context_states= sent_output[:]
 
+        loss_part_output = change_loss_shape(loss_part_all, abs_lens)
+        loss_part = torch.mean(loss_part_output)
         #获得句子的每个hidden以后，一生多 生成每个句子, 然后每个生成的具体句子跟原始的target做loss，返回loss
         logit = self._SentToWordLSTM(sentence_output_states, abstract_sents, sentence_hidden_states, sentence_context_states)
 
-        return logit
+        return logit, loss_part
     
     
     def batch_decode(self, article_sents, article_lens, sent_lens, start, max_sent, max_words):

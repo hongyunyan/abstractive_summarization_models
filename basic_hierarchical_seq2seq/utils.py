@@ -180,3 +180,9 @@ def change_reshape_decoder(input):
         output[index] = torch.stack(input[index], dim = 0).transpose(0,1).reshape(-1, input[index][0].size()[-1])
 
     return output
+def change_loss_shape(input, input_lens):
+    matrix = torch.arange(max(input_lens)).repeat(len(input_lens),1)
+    mask_matrix = torch.tensor(input_lens).repeat(max(input_lens),1).transpose(0,1)
+    mask = matrix < mask_matrix
+    output = torch.masked_select(input, mask)
+    return output
