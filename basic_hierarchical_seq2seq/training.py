@@ -62,7 +62,7 @@ def basic_validate(net, criterion, val_batches):
 
 
 class BasicPipeline(object):
-    def __init__(self, name, net,
+    def __init__(self, name, net, pretrain,
                  train_batcher, val_batcher, batch_size,
                  val_fn, criterion, optim, grad_fn=None):
         self.name = name
@@ -79,6 +79,7 @@ class BasicPipeline(object):
         self._n_epoch = 0  # epoch not very useful?
         self._batch_size = batch_size
         self._batches = self.batches()
+        self._pretrain = pretrain
 
     def batches(self):
         while True:
@@ -101,15 +102,20 @@ class BasicPipeline(object):
             fw_args, bw_args = next(self._batches)
 
         #bw_args为 一个有所有单词的target的list
-        net_out, loss_part = self._net(*fw_args)  #34.31.30022
+        if self._pretrain:
+            net_out = self._net(*fw_args)  #34.31.30022
+        else:
+            net_out, loss_part = self._net(*fw_args)  #34.31.30022
         #返回这轮生成的每个句子每个timestamp的输出
 
         # get logs and output for logging, backward
         log_dict = {}
         loss_args = self.get_loss_args(net_out, bw_args) #两个东西拼一下
         # backward and update ( and optional gradient monitoring )
-        loss = self._criterion(*loss_args).mean() + loss_part * 0.15  #计算loss的过程中，不应该考虑最后几位空的怎么处理吗??
-        print(loss)
+        if self._pretrain:
+            loss = self._criterion(*loss_args).mean()
+        else:
+            loss = self._criterion(*loss_args).mean() + loss_part * 0.15  #计算loss的过程中，不应该考虑最后几位空的怎么处理吗??
         loss.backward() #这是自动的反向吗？
         log_dict['loss'] = loss.item()
         if self._grad_fn is not None:

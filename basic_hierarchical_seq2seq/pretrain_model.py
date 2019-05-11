@@ -139,7 +139,7 @@ def pretrain(args):
 
     if args.cuda:
         net = net.cuda()
-    pipeline = BasicPipeline(meta['net'], net,
+    pipeline = BasicPipeline(meta['net'], net, True,
                              train_batcher, val_batcher, args.batch, val_fn,
                              criterion, optimizer, grad_fn)
     trainer = BasicTrainer(pipeline, args.path,
