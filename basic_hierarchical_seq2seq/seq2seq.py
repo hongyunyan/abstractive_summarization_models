@@ -125,8 +125,8 @@ class Seq2SeqSumm(nn.Module):
         dec_output = []
         states = init_dec_states
         for i in range(max_len):
-            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1)
-            states, converage ,_= self._decoder.decode_step(tok, states, attention, converage)
+            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
+            states, converage = self._decoder.decode_step(tok, states, attention, converage)
             (h,c), dec_out = states
 
             h_output.append(h[0])
