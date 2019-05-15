@@ -31,21 +31,46 @@ class PretrainModel(nn.Module):
         super().__init__()
 
         self._bidirectional = bidirectional
-        # enc_out_dim = n_hidden * (2 if bidirectional else 1)
-        self._dec_h = nn.Linear(n_hidden, emb_dim, bias=False)
-
         self._n_hidden = n_hidden
 
         self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
         self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
 
-    def forward(self, source_sents, source_length, tar_inputs, target_length):
+    def forward(self, source_sents, source_length, tar_inputs):
         
-        sent_output = self._WordToSentLSTM(source_sents, source_length)  
-        context_output = self._dec_h(sent_output)
+        _, context_output = self._WordToSentLSTM(source_sents, source_length)  
         logit = self._SentToWordLSTM(context_output, tar_inputs, None, None)
 
         return logit
+
+
+class PretrainSeq2Seq(nn.Module):
+    def __init__(self, vocab_size, emb_dim, n_hidden, bidirectional, n_layer, embedding, dropout=0.0):
+
+        super().__init__()
+
+        self._bidirectional = bidirectional
+        self._n_hidden = n_hidden
+
+        self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
+        self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout, embedding)
+
+    def forward(self, article_sents, article_lens, sent_lens, target, target_article_length, target_sentence_length):
+        #   target为应当decoder出来的所有的句子集合，包括了EOA， target_article_length为每个文章对应的句子数,target_sentence_length为target每个句子的长度
+        
+        sent_vec, _ = self._WordToSentLSTM(article_sents, sent_lens)  #[batch, 256]，每个vec表示的是每句话的信息
+        _, context_output = self._WordToSentLSTM(target, target_sentence_length)  #获取对应的decoder句子信息
+
+
+        pad = 1e-8  #用来填充没有句子的地方的hidden        
+        #根据上面那个[batch，256]，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
+        article_hidden_states = change_shape(sent_vec, article_lens, pad)
+        (sent_dec_out, _, _), _ = self._Seq2SeqSumm(article_hidden_states, article_lens, target_article_length)
+        sent_output = change_reshape([sent_dec_out], target_article_length)
+        sentence_output_states = sent_output[0]
+        
+        loss = torch.sum((context_output - sentence_output_states).mul(context_output - sentence_output_states)) / sentence_output_states.size()[0]
+        return loss
 
 
 class HierarchicalSumm(nn.Module):
@@ -61,14 +86,14 @@ class HierarchicalSumm(nn.Module):
         self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout, embedding)
         self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
         self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, sampling_teaching_force, embedding)
-        self._HierarchicalWordToSentLSTM = HierarchicalWordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
+        # self._HierarchicalWordToSentLSTM = HierarchicalWordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, self_attn, embedding)
     
     def forward(self, article_sents, article_lens, sent_lens,  abstract_sents, abs_lens):  
         #传给第一个函数的article_sents是一个n个句子×m个word， sent_lens为每个句子的长度的n维矩阵，矩阵article_lens，记录每个article有几个句子
 
         #尝试一个多层的wordtosent，天哪我在干什么orz
-        wordToSentModel = self._HierarchicalWordToSentLSTM if self._hi_encoder else self._WordToSentLSTM
-        sent_vec = wordToSentModel(article_sents, sent_lens)  #[batch, 256]，每个vec表示的是每句话的信息
+        # wordToSentModel = self._HierarchicalWordToSentLSTM if self._hi_encoder else self._WordToSentLSTM
+        sent_vec, _ = self._WordToSentLSTM(article_sents, sent_lens)  #[batch, 256]，每个vec表示的是每句话的信息
 
         pad = 1e-8  #用来填充没有句子的地方的hidden        
         #根据上面那个[batch，256]，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
@@ -111,12 +136,21 @@ class HierarchicalSumm(nn.Module):
         states = init_states
 
         tok = torch.cat([torch.arange(max_sent) + special_word_num] * len(article_lens), dim=0).to(article_sents.device)
-
+        dec_out = sentence_output_states
         outputs = None
+        pre_tok_2 = (torch.ones(tok.size()[0],1) * -1).long().cuda()
+        pre_tok_1 = (torch.ones(tok.size()[0],1) * -1).long().cuda()
         for i in range(max_words):
-            logit, states = self._SentToWordLSTM._step(tok, states, sentence_output_states)
+            logit, states, dec_out = self._SentToWordLSTM._step(tok, states, dec_out)
             logit[:, special_word_num: max_sent + special_word_num] = -10000 #刨除可能出现的sent_
             tok = torch.max(logit, dim=1, keepdim=True)[1]  #挣扎一下维度对不对
+            for index in range(tok.size()[0]):
+                if (tok[index,0] == pre_tok_1[index, 0] and tok[index,0] == pre_tok_2[index, 0]):
+                    logit[index, tok] = -10000 
+            tok = torch.max(logit, dim=1, keepdim=True)[1]
+            pre_tok_2 = pre_tok_1 
+            pre_tok_1 = tok
+
             if (i == 0): 
                 outputs = torch.unsqueeze(tok[:,0] , 1)
             else:

@@ -94,23 +94,69 @@ def pretrain_batchify_fn(pad, start, end,  eoa, data, cuda=True):
     source_sents = [sent for article in sources for sent in article]
     target_sents = [sent for article in targets for sent in article]
 
-    sents = source_sents + target_sents
+    sents = source_sents + target_sents 
 
     tar_ins = [[start] + sent for sent in sents] 
     tar_outs = [sent + [end] for sent in sents]
 
+    sents.append([eoa])
+    tar_ins.append([start] + [eoa])
+    tar_outs.append([eoa])
+
     source_length = [len(sent) for sent in sents]
-    tar_length = [length + 1 for length in source_length]
 
     source = pad_batch_tensorize(sents, pad, cuda)
     tar_in = pad_batch_tensorize(tar_ins, pad, cuda)
     target = pad_batch_tensorize(tar_outs, pad, cuda)
 
-    fw_args = (source, source_length, tar_in, tar_length)
+    fw_args = (source, source_length, tar_in)
     loss_args = (target, )
 
     return fw_args, loss_args
 
+@curry
+def pretrain_seq2seq_batchify_fn(pad, start, end,  eoa, data, cuda=True):
+    #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
+    data.sort(key=lambda data:len(data[0]), reverse=True)
+    sources, targets = list(map(list, unzip(data)))
+    
+    #删除targets中abs长度大于20的文本
+    del_num = []
+    for i in range(len(sources)):
+        if (len(targets[i]) > 20):
+            del_num.append(i)
+
+    # if (len(del_num) == len(sources)):
+    #     return None,None
+
+    for num in reversed(del_num):
+        del sources[num]
+        del targets[num]
+
+    source_article_len = [len(source) for source in sources]
+    target_article_len = [len(target) + 1 for target in targets]
+
+    source_sent = [] 
+    for source in sources:
+        for src in source:
+            source_sent.append(src)
+
+    src_sent_len = [len(src) for src in source_sent]
+
+    target_out = []
+    for target in targets: 
+        for tar in target:
+            target_out.append(tar + [end])
+        target_out.append([eoa])
+
+    target_sentence_length = [len(target) for target in target_out]
+
+    source = pad_batch_tensorize(source_sent, pad, cuda)
+    target = pad_batch_tensorize(target_out, pad, cuda)
+
+    fw_args = (source, source_article_len, src_sent_len, target, target_article_len, target_sentence_length)
+
+    return fw_args, None
 
 
 @curry
@@ -143,11 +189,9 @@ def batchify_fn(pad, start, end,  eoa, data, cuda=True):
     tar_ins = []
     tar_outs = []
     for target in targets:
-        sent_num = 0
         for tar in target:
-            tar_ins.append([special_word_num + sent_num] + tar)
+            tar_ins.append([start] + tar)
             tar_outs.append(tar + [end])
-            sent_num += 1
         tar_outs[-1][-1] = eoa
 
     source = pad_batch_tensorize(source_sent, pad, cuda)
