@@ -44,6 +44,19 @@ class PretrainModel(nn.Module):
         return logit
 
 
+    def decode(self, source_sents, source_length):
+        sent_output = self._WordToSentLSTM(source_sents, source_length)  
+        context_output = self._dec_h(sent_output)
+        output = []
+        tok = torch.tensor([START]).cuda()
+        states = None
+        dec_out = context_output
+        for i in range(20):
+            logit, states, dec_out = self._SentToWordLSTM._for_test(tok, states, dec_out)
+            tok = torch.max(logit, dim=1, keepdim=True)[1]
+            output.append(tok.item())
+        return output
+
 class PretrainSeq2Seq(nn.Module):
     def __init__(self, vocab_size, emb_dim, n_hidden, bidirectional, n_layer, embedding, dropout=0.0):
 
