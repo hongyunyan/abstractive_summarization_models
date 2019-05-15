@@ -10,7 +10,7 @@ from cytoolz import curry
 
 import torch
 
-from hierarchical_model import HierarchicalSumm
+from hierarchical_model import HierarchicalSumm, PretrainSeq2Seq
 
 from utils import PAD, UNK, START, END, EOA
 from batcher import conver2id, pad_batch_tensorize
@@ -50,12 +50,11 @@ def load_best_ckpt(model_dir, reverse=False):
 class Abstractor(object):
     def __init__(self, abs_dir, max_sents=10, max_words=200, cuda=True):
         abs_meta = json.load(open(join(abs_dir, 'meta.json')))
-        assert abs_meta['net'] == 'base_abstractor'
         abs_args = abs_meta['net_args']
         abs_args["embedding"] = None
         abs_ckpt = load_best_ckpt(abs_dir)
         word2id = pkl.load(open(join(abs_dir, 'vocab.pkl'), 'rb'))
-        abstractor = HierarchicalSumm(**abs_args)
+        abstractor = PretrainSeq2Seq(**abs_args)
         abstractor.load_state_dict(abs_ckpt)
         self._device = torch.device('cuda' if cuda else 'cpu')
         self._net = abstractor.to(self._device)
@@ -81,13 +80,13 @@ class Abstractor(object):
                                      ).to(self._device)
         
         #art_sents 是一个每个文章所有sents凑在一起的矩阵，sent_lens是每个句子的长度，article_lens是每个文章有多少个句子
-        dec_args = (art_sents, article_lens, sent_lens, START, self._max_sents, self._max_words)
+        dec_args = (art_sents, article_lens, sent_lens, self._max_sents, self._max_words)
         return dec_args
 
     def __call__(self, raw_article_sents):
         self._net.eval()
         dec_args = self._prepro(raw_article_sents)
-        decs = self._net.batch_decode(*dec_args)
+        decs = self._net.decode(*dec_args)
 
         dec_sents = []
         for i, raw_words in enumerate(raw_article_sents):
