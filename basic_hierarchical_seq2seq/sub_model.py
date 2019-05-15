@@ -59,7 +59,6 @@ class WordToSentLSTM(nn.Module):
     def lstm(self, sequence, seq_lens, init_enc_states, need_embedding = True):
         #输出为batch，hidden_dim
         batch_size = sequence.size(0)
-
         if (need_embedding):
             #注入embedding matrix
             sequence = sequence.transpose(0, 1)
@@ -76,7 +75,6 @@ class WordToSentLSTM(nn.Module):
         #扔进lstm
         packed_seq = nn.utils.rnn.pack_padded_sequence(emb_sequence, seq_lens)  
         packed_out, final_states = self._lstm_layer(packed_seq, init_enc_states) 
-
         lstm_out, _ = nn.utils.rnn.pad_packed_sequence(packed_out) 
 
         #再把位置调回来
@@ -250,11 +248,22 @@ class SentToWordLSTM(nn.Module):
         logit = torch.stack(logits, dim=1)   
         return logit           
 
-    def _step(self, tok, states, input_states):
 
+    def _for_test(self, tok, states,input_states):
+        
+        if states is None:
+            init_h = self._init_dec_h.repeat(input_states.size()[0], 1)
+            init_c = self._init_dec_c.repeat(input_states.size()[0], 1)
+
+            states = (torch.unsqueeze(init_h, 0).contiguous(),
+            torch.unsqueeze(init_c, 0).contiguous())  #传闻中变成连续块的函数
+
+        
+        return self._step(tok,states,input_states)
+
+    def _step(self, tok, states, input_states):
         lstm_in = torch.cat([self._embedding(tok).squeeze(1), input_states], dim=1) #这是原来的写法
         states = self._dec_lstm(lstm_in, states)
-
         lstm_out = states[0][-1]
         dec_out = self._projection(lstm_out)
 
