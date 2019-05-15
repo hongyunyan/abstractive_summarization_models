@@ -130,16 +130,28 @@ def pretrain(args):
     criterion, train_params = configure_training(
         'adam', args.lr, args.clip, args.decay, args.batch)
     
+    if not exists(args.path):
+        os.makedirs(args.path)
+    with open(join(args.path, 'vocab.pkl'), 'wb') as f:
+        pkl.dump(word2id, f, pkl.HIGHEST_PROTOCOL)
+
     val_fn = basic_validate(net, 2, criterion)
     grad_fn = get_basic_grad_fn(net, args.clip)
     optimizer = optim.Adam(net.parameters(), **train_params['optimizer'][1])
     scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True,
                                   factor=args.decay, min_lr=0,
                                   patience=args.lr_p)
+
+    net_args_backup = net_args.copy()
+    del net_args_backup["embedding"]
+
     meta = {}
-    meta['net']           = 'pretrain_model'
-    meta['net_args']      = net_args
+    meta['net']           = 'pretrain_seq2seq'
+    meta['net_args']      = net_args_backup 
     meta['traing_params'] = train_params
+    print(meta)
+    with open(join(args.path, 'meta.json'), 'w') as f:
+        json.dump(meta, f, indent=4)
 
     if args.cuda:
         net = net.cuda()

@@ -13,7 +13,7 @@ from utils import sequence_mean, len_mask, change_shape, change_reshape, change_
 from torch.nn import functional as F
 from utils import reorder_sequence, reorder_lstm_states
 
-from utils import EOA, PAD, special_word_num
+from utils import EOA, PAD, special_word_num,START
 from seq2seq import Seq2SeqSumm
 import beamsearch as bs
 
@@ -67,6 +67,7 @@ class PretrainSeq2Seq(nn.Module):
 
         self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
         self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout, embedding)
+        self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
 
     def forward(self, article_sents, article_lens, sent_lens, target, target_article_length, target_sentence_length):
         #   target为应当decoder出来的所有的句子集合，包括了EOA， target_article_length为每个文章对应的句子数,target_sentence_length为target每个句子的长度
@@ -84,6 +85,44 @@ class PretrainSeq2Seq(nn.Module):
         
         loss = torch.sum((context_output - sentence_output_states).mul(context_output - sentence_output_states)) / sentence_output_states.size()[0]
         return loss
+    
+    def decode(self, article_sents, article_lens, sent_lens, max_sent, max_word):
+        sent_vec, _ = self._WordToSentLSTM(article_sents, sent_lens)  #[batch, 256]，每个vec表示的是每句话的信息
+
+        pad = 1e-8  #用来填充没有句子的地方的hidden
+        article_hidden_states = change_shape(sent_vec, article_lens, pad)
+        
+        sent_dec_out, _, _= self._Seq2SeqSumm.batch_decode(article_hidden_states, article_lens, max_sent)
+        sent_output = change_reshape_decoder([sent_dec_out])[0]
+        
+        tok = torch.tensor([START]).expand(sent_output.size()[0], 1).to(article_sents.device)
+        states = None
+
+        dec_out = sent_output
+        outputs = None
+
+        for i in range(max_word):
+            logit, states, dec_out = self._SentToWordLSTM._for_test(tok, states, dec_out)
+            tok = torch.max(logit, dim=1, keepdim=True)[1]
+                   
+            if (i == 0): 
+                outputs = torch.unsqueeze(tok[:,0] , 1)
+            else:
+                outputs = torch.cat((outputs, torch.unsqueeze(tok[:, 0] , 1)), dim=1)
+
+        articles_output = []
+        sent_num = 0
+        for i in range(len(article_lens)):
+            sents = outputs[sent_num: sent_num + max_sent]
+            sent_num = sent_num + max_sent
+            article = []
+            for sent in sents:
+                sent_ids = []
+                for word in sent:
+                    sent_ids.append(word.item())
+                article.append(sent_ids)
+            articles_output.append(article)
+        return articles_output
 
 
 class HierarchicalSumm(nn.Module):

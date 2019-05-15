@@ -253,19 +253,8 @@ class SentToWordLSTM(nn.Module):
         return logit           
 
 
-    def _for_test(self, tok, states,input_states):
-        
-        if states is None:
-            init_h = self._init_dec_h.repeat(input_states.size()[0], 1)
-            init_c = self._init_dec_c.repeat(input_states.size()[0], 1)
-
-            states = (torch.unsqueeze(init_h, 0).contiguous(),
-            torch.unsqueeze(init_c, 0).contiguous())  #传闻中变成连续块的函数
-
-        
-        return self._step(tok,states,input_states)
-
     def _step(self, tok, states, input_states):
+        
         lstm_in = torch.cat([self._embedding(tok).squeeze(1), input_states], dim=1) #这是原来的写法
         states = self._dec_lstm(lstm_in, states)
         lstm_out = states[0][-1]
@@ -276,28 +265,15 @@ class SentToWordLSTM(nn.Module):
         
         return logit, states, dec_out
 
-    def topk_step(self, tok, states, beam_size):
-        """tok:[BB, B], states ([L, BB, B, D]*2, [BB, B, D])"""
-        (h, c), prev_out = states
+    def _for_test(self, tok, states, input_states):
 
-        # lstm is not bemable
-        nl, _, _, d = h.size()
-        beam, batch = tok.size()
-        lstm_in_beamable = torch.cat(
-            [self._embedding(tok), prev_out], dim=-1)
-        lstm_in = lstm_in_beamable.contiguous().view(beam*batch, -1)
-        prev_states = (h.contiguous().view(nl, -1, d),
-                       c.contiguous().view(nl, -1, d))
-        h, c = self._dec_lstm(lstm_in, prev_states)
-        states = (h.contiguous().view(nl, beam, batch, -1),
-                  c.contiguous().view(nl, beam, batch, -1))
-        lstm_out = states[0][-1]
+        if states is None:
+            init_h = self._init_dec_h.repeat(input_states.size()[0], 1)
+            init_c = self._init_dec_c.repeat(input_states.size()[0], 1)
+
+            states = (torch.unsqueeze(init_h, 0).contiguous(),
+                  torch.unsqueeze(init_c, 0).contiguous())  #传闻中变成连续块的函数
+
         
-        dec_out = self._projection(lstm_out)
-
-        logit = torch.mm(dec_out.contiguous().view(batch*beam, -1), self._embedding.weight.t())
-        logit = torch.log(F.softmax(logit, dim=-1) + 1e-8).view(beam, batch, -1)
-
-        k_logit, k_tok = logit.topk(k=beam_size, dim=-1)
-        return k_tok, k_logit, (states, dec_out)
+        return self._step(tok, states, input_states)
 

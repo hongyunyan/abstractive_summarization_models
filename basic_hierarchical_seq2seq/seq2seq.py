@@ -125,8 +125,7 @@ class Seq2SeqSumm(nn.Module):
         dec_output = []
         states = init_dec_states
         for i in range(max_len):
-            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
-            states, converage = self._decoder.decode_step(tok, states, attention, converage)
+            states, converage = self._decoder.decode_step(states, attention, converage)
             (h,c), dec_out = states
 
             h_output.append(h[0])
@@ -213,7 +212,7 @@ class AttentionalLSTMDecoder(object):
 
         return states, converage, loss_part
 
-    def decode_step(self, tok, states, attention, converage):
-        states, converage, _= self._step(tok, states, attention, converage)
+    def decode_step(self, states, attention, converage):
+        states, converage, _= self._step(states, attention, converage)
         
         return states, converage
