@@ -37,11 +37,11 @@ def step_attention(query, key, value, converage, projection, attn_wc, mem_mask=N
     output = attention_aggregate(value, norm_score)
     if converage is None:
         min_attn = norm_score
-        min_attn = torch.sum(min_attn.squeeze(-2), 1)
+        #min_attn = torch.sum(min_attn.squeeze(-2), 1)
     else:
         min_attn = torch.min(norm_score.squeeze(-2), converage)
-        min_attn = torch.sum(min_attn.squeeze(-2)).unsqueeze(-1)
-    # min_attn = torch.sum(min_attn.squeeze(-2), 1)
+        #min_attn = torch.sum(min_attn.squeeze(-2)).unsqueeze(-1)
+    min_attn = torch.sum(min_attn.squeeze(-2), 1)
 
     #计算converage 和score最小值加和的值，返回
     return output.squeeze(-2), norm_score.squeeze(-2), min_attn
