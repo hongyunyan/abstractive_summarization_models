@@ -30,6 +30,7 @@ class WordToSentLSTM(nn.Module):
         if embedding is not None:
             assert self._embedding.weight.size() == embedding.size()
             self._embedding.weight.data.copy_(embedding)
+        
         self._self_attn = self_attn
 
         state_layer = n_layer * (2 if bidirectional else 1)
@@ -45,6 +46,8 @@ class WordToSentLSTM(nn.Module):
         #用来加一层转换输出的格式
         enc_out_dim = n_hidden * (2 if bidirectional else 1)
         self._dec_h = nn.Linear(enc_out_dim, n_hidden, bias=False)
+
+        self.proj = nn.Linear(n_hidden, emb_dim, bias=False)
 
         self._lstm_layer = nn.LSTM(input_size = emb_dim, hidden_size= n_hidden, num_layers = n_layer, bidirectional = bidirectional, dropout = dropout)
 
@@ -120,8 +123,9 @@ class WordToSentLSTM(nn.Module):
 
             output = torch.cat(final_states[0].chunk(2, dim=0), dim=2)  #从[2,batch,256] 到 【1,batch,512】
             output = torch.stack([self._dec_h(h) for h in output], dim=0)[-1] #从 [1,batch,512] 到 [batch,256]
-
-            return output
+             
+            context_output = self.proj(output)
+            return output, context_output  #前一项是用于encoder结构的，后一项是用于Decoder结构的
 
 
 class HierarchicalWordToSentLSTM(WordToSentLSTM):

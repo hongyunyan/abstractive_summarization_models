@@ -160,7 +160,7 @@ def main(args):
 
     torch.backends.cudnn.benchmark = True
     # prepare trainer
-    val_fn = basic_validate(net, criterion)
+    val_fn = basic_validate(net, 3, criterion)
     grad_fn = get_basic_grad_fn(net, args.clip)
     
 
@@ -179,7 +179,7 @@ def main(args):
 
     if args.cuda:
         net = net.cuda()
-    pipeline = BasicPipeline(meta['net'], net, False,
+    pipeline = BasicPipeline(meta['net'], net, 3,
                              train_batcher, val_batcher, args.batch, val_fn,
                              criterion, optimizer, grad_fn)
     trainer = BasicTrainer(pipeline, args.path,

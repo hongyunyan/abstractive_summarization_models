@@ -29,8 +29,19 @@ def get_basic_grad_fn(net, clip_grad, max_grad=5):
     return f
 
 @curry
-def compute_loss(net, criterion, fw_args, loss_args):
+def compute_loss_model(net, criterion, fw_args, loss_args):
+    net_out, loss_part = net(*fw_args)
+    loss = criterion(*((net_out,) + loss_args)) + 0.15*loss_part
+    return loss
+
+@curry
+def compute_loss_pretrain_model(net, criterion, fw_args, loss_args):
     loss = criterion(*((net(*fw_args),) + loss_args))
+    return loss
+
+@curry
+def compute_loss_pretrain_seq2seq(net, criterion, fw_args, loss_args):
+    loss = net(*fw_args)
     return loss
 
 @curry
@@ -41,12 +52,30 @@ def val_step(loss_step, fw_args, loss_args):
     return loss.size(0), loss.sum().item()
 
 @curry
-def basic_validate(net, criterion, val_batches):
+def val_step_for_pretrain_seq2seq(loss_step, fw_args, loss_args):
+    if (fw_args is None):
+        return 0,0
+    loss = loss_step(fw_args, loss_args)
+    return 1, loss.item()
+
+@curry
+def basic_validate(net, type, criterion, val_batches):
+    computer_loss = None
+    val_step_func = val_step()
+    if (type==1):
+        compute_loss = compute_loss_pretrain_model()
+    elif (type==2):
+        compute_loss = compute_loss_pretrain_seq2seq()
+        val_step_func = val_step_for_pretrain_seq2seq()
+    else:
+        computer_loss = compute_loss_model()
+
+    
     print('running validation ... ')
     net.eval()
     start = time()
     with torch.no_grad():
-        validate_fn = val_step(compute_loss(net, criterion))
+        validate_fn = val_step_func(compute_loss(net, criterion))
         n_data, tot_loss = reduce(
             lambda a, b: (a[0]+b[0], a[1]+b[1]),
             starmap(validate_fn, val_batches),
@@ -62,7 +91,7 @@ def basic_validate(net, criterion, val_batches):
 
 
 class BasicPipeline(object):
-    def __init__(self, name, net, pretrain,
+    def __init__(self, name, net, type,
                  train_batcher, val_batcher, batch_size,
                  val_fn, criterion, optim, grad_fn=None):
         self.name = name
@@ -79,7 +108,7 @@ class BasicPipeline(object):
         self._n_epoch = 0  # epoch not very useful?
         self._batch_size = batch_size
         self._batches = self.batches()
-        self._pretrain = pretrain
+        self._type = type
 
     def batches(self):
         while True:
@@ -94,28 +123,53 @@ class BasicPipeline(object):
             loss_args = (net_out, ) + bw_args #这算什么神仙用法？这是一个数组吗？
         return loss_args
 
-    def train_step(self):
-        # forward pass of model
-        self._net.train()
+    def loss_computer_pretrain_model(self):
         fw_args, bw_args = next(self._batches)
         while (fw_args is None):
             fw_args, bw_args = next(self._batches)
 
-        #bw_args为 一个有所有单词的target的list
-        if self._pretrain:
-            net_out = self._net(*fw_args)  #34.31.30022
-        else:
-            net_out, loss_part = self._net(*fw_args)  #34.31.30022
-        #返回这轮生成的每个句子每个timestamp的输出
-
-        # get logs and output for logging, backward
+        net_out = self._net(*fw_args)  
         log_dict = {}
         loss_args = self.get_loss_args(net_out, bw_args) #两个东西拼一下
+
+        loss = self._criterion(*loss_args).mean()
+        return loss
+
+    def loss_computer_pretrain_seq2seq(self):
+        fw_args, _= next(self._batches)
+        while (fw_args is None):
+            fw_args, _ = next(self._batches)
+
+        loss = self._net(*fw_args)  #34.31.30022
+
+        return loss
+
+    def loss_computer_model(self):
+        fw_args, bw_args = next(self._batches)
+        while (fw_args is None):
+            fw_args, bw_args = next(self._batches)
+
+        net_out, loss_part = self._net(*fw_args)  #34.31.30022
+        
+        loss_args = self.get_loss_args(net_out, bw_args) #两个东西拼一下
         # backward and update ( and optional gradient monitoring )
-        if self._pretrain:
-            loss = self._criterion(*loss_args).mean()
+        loss = self._criterion(*loss_args).mean() + loss_part * 0.15  #计算loss的过程中，不应该考虑最后几位空的怎么处理吗??
+        return loss
+
+    def train_step(self):
+        # forward pass of model
+        self._net.train()
+        loss = None
+        if (self._type == 1):
+            #pretrain model
+            loss = self.loss_computer_pretrain_model()
+        elif (self._type == 2):
+            loss = self.loss_computer_pretrain_seq2seq() #34.31.30022
+            print(loss)
         else:
-            loss = self._criterion(*loss_args).mean() + loss_part * 0.15  #计算loss的过程中，不应该考虑最后几位空的怎么处理吗??
+            loss = self.loss_computer_model()
+
+        log_dict = {}
         loss.backward() #这是自动的反向吗？
         log_dict['loss'] = loss.item()
         if self._grad_fn is not None:
@@ -125,7 +179,6 @@ class BasicPipeline(object):
 
         self._net.zero_grad() #清空梯度
         torch.cuda.empty_cache() 
-
         return log_dict
 
     def validate(self):
@@ -172,10 +225,11 @@ class BasicTrainer(object):
 
     def log(self, log_dict, time_spend):
         loss = log_dict['loss'] if 'loss' in log_dict else log_dict['reward']
-        if self._running_loss is not None:
-            self._running_loss = 0.99*self._running_loss + 0.01*loss
-        else:
-            self._running_loss = loss
+        # if self._running_loss is not None:
+        #     self._running_loss = 0.99*self._running_loss + 0.01*loss
+        # else:
+        #     self._running_loss = loss
+        self._running_loss = loss
 
         print('train step: {}, time spend: {:.2f}, {}: {:.4f}\r'.format(
             self._step, time_spend, 

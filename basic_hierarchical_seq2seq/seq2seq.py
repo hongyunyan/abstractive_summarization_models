@@ -40,7 +40,7 @@ class Seq2SeqSumm(nn.Module):
         output_dim = int(n_hidden/2)
 
         # vanillat lstm / LNlstm
-        self._dec_lstm = MultiLayerLSTMCells(n_hidden, n_hidden, n_layer, dropout=dropout)
+        self._dec_lstm = MultiLayerLSTMCells(128, n_hidden, n_layer, dropout=dropout)
 
         # project encoder final states to decoder initial states
         enc_out_dim = n_hidden * (2 if bidirectional else 1)
@@ -125,7 +125,7 @@ class Seq2SeqSumm(nn.Module):
         dec_output = []
         states = init_dec_states
         for i in range(max_len):
-            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1).cuda()
+            tok = torch.tensor(special_word_num + i).expand(states[1].size()[0], 1)
             states, converage ,_= self._decoder.decode_step(tok, states, attention, converage)
             (h,c), dec_out = states
 
@@ -174,8 +174,8 @@ class AttentionalLSTMDecoder(object):
         #给sentence level的decoder输入标记这是第几句话的vec
         for i in range(max(tar_lens)):  #感觉是在模拟time stamp
 
-            tok = torch.tensor(special_word_num + i).expand(step_states[1].size()[0], 1).cuda()
-            step_states, converage, loss_part= self._step(tok, step_states, attention, converage)
+            # tok = torch.tensor(special_word_num + i).expand(step_states[1].size()[0], 1)
+            step_states, converage, loss_part= self._step(step_states, attention, converage)
             (h,c), dec_out = step_states
 
             dec_out_all.append(dec_out)
@@ -192,11 +192,11 @@ class AttentionalLSTMDecoder(object):
         #返回sentence level的所有dec_out
         return (dec_out_all, h_all, c_all), loss_part_all #这样就是batch×length×n_hidden了
 
-    def _step(self, tok, states, attention, converage):
+    def _step(self, states, attention, converage):
         prev_states, prev_out = states
-        lstm_in =  torch.cat([self._embedding(tok).squeeze(1), prev_out],dim=1)
+        # lstm_in =  torch.cat([self._embedding(tok).squeeze(1), prev_out],dim=1)
 
-        states = self._lstm(lstm_in, prev_states)
+        states = self._lstm(prev_out, prev_states)
         lstm_out = states[0][-1]
         query = torch.mm(lstm_out, self._attn_w)
         attention, attn_mask = attention
