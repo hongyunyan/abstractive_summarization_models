@@ -122,7 +122,7 @@ if __name__ == '__main__':
                         help='beam size for beam-search (reranking included)')
     parser.add_argument('--max_dec_word', type=int, action='store', default=50,
                         help='maximun words to be decoded for the abstractor')
-    parser.add_argument('--max_dec_sent', type=int, action='store', default=20,
+    parser.add_argument('--max_dec_sent', type=int, action='store', default=10,
                         help='maximun sent to be decoded for the abstractor')
     parser.add_argument('--sampling_teaching_force', type=bool, action='store', default=False, 
                         help='choose whether use scheduled sampling for teaching force')

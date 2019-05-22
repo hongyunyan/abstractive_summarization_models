@@ -230,6 +230,7 @@ class SentToWordLSTM(nn.Module):
 
         #    #, input_hidden_states  这边瞎糊的
         states = init_states
+        dec_out = input_hidden_states
         logits = [] 
         for i in range(max_len):
             #如果利用scheduled sampling方法，随机选择用真实还是生成的tok作为输入。
@@ -244,7 +245,7 @@ class SentToWordLSTM(nn.Module):
             else:
                 tok = target[:, i:i+1]
             
-            lp, states = self._step(tok, states, input_hidden_states)
+            lp, states, dec_out = self._step(tok, states, dec_out)
             logits.append(lp)
         logit = torch.stack(logits, dim=1)   
         return logit           
@@ -260,7 +261,7 @@ class SentToWordLSTM(nn.Module):
         logit = torch.mm(dec_out, self._embedding.weight.t())
         logit = torch.log(F.softmax(logit, dim=-1) + 1e-8)
         
-        return logit, states
+        return logit, states, dec_out
 
     def topk_step(self, tok, states, beam_size):
         """tok:[BB, B], states ([L, BB, B, D]*2, [BB, B, D])"""
