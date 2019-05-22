@@ -236,7 +236,7 @@ if __name__ == '__main__':
     parser.add_argument('--sampling_teaching_force', type=bool, action='store', default=False,
                         help='choose whether use scheduled sampling for teaching force algorithm')
     parser.add_argument(
-        '--ckpt_freq', type=int, action='store', default=10000,
+        '--ckpt_freq', type=int, action='store', default=2000,
         help='number of update steps for checkpoint and validation'
     )
     parser.add_argument('--patience', type=int, action='store', default=4,

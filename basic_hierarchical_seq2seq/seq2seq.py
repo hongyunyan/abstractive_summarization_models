@@ -49,7 +49,7 @@ class Seq2SeqSumm(nn.Module):
         # multiplicative attention
         self._attn_wm = nn.Parameter(torch.Tensor(enc_out_dim, n_hidden))
         self._attn_wq = nn.Parameter(torch.Tensor(n_hidden, n_hidden))
-        self._attn_wc = nn.Linear(1, n_hidden, bias=False)
+        # self._attn_wc = nn.Linear(1, n_hidden, bias=False)
         init.xavier_normal_(self._attn_wm)
         init.xavier_normal_(self._attn_wq)
         # project decoder output to emb_dim, then
@@ -61,22 +61,24 @@ class Seq2SeqSumm(nn.Module):
             nn.Linear(n_hidden, output_dim, bias=False)
         )
 
-        self._attention_projection = nn.Sequential(
-            nn.Tanh(),
-            nn.Linear(n_hidden, 1, bias=False)
-        )
+        # self._attention_projection = nn.Sequential(
+        #     nn.Tanh(),
+        #     nn.Linear(n_hidden, 1, bias=False)
+        # )
 
         # functional object for easier usage
-        self._decoder = AttentionalLSTMDecoder(self._dec_lstm, self._attn_wq, self._projection, self._attention_projection, self._attn_wc, self._embedding)
-    
-    def forward(self, article, art_lens, tar_lens):
+        #self._decoder = AttentionalLSTMDecoder(self._dec_lstm, self._attn_wq, self._projection, self._attention_projection, self._attn_wc, self._embedding)
+        self._decoder = AttentionalLSTMDecoder(self._dec_lstm, self._attn_wq, self._projection, self._embedding)
+    def forward(self, article, art_lens, target, tar_lens):
 
         attention, init_dec_states = self.encode(article, art_lens)  #(34,81,256) ((1,34,256),(1,34,256),（34,128))
         #init_dec_states传的是[(h,c).attn_out],后者不知道在干吗
         #attention感觉是encoder的结果乘以attention的矩阵
         mask = len_mask(art_lens, attention.device).unsqueeze(-2) #改个格式 [34,1,81]
-        dec_out_all, loss_part_all = self._decoder((attention, mask), init_dec_states, tar_lens)
-        return dec_out_all, loss_part_all
+        # dec_out_all, loss_part_all = self._decoder((attention, mask), init_dec_states, target, tar_lens)
+        dec_out_all = self._decoder((attention, mask), init_dec_states, target, tar_lens)
+        # return dec_out_all, loss_part_all
+        return dec_out_all
 
     def encode(self, article, art_lens=None):
         size = (
@@ -125,7 +127,8 @@ class Seq2SeqSumm(nn.Module):
         dec_output = []
         states = init_dec_states
         for i in range(max_len):
-            states, converage = self._decoder.decode_step(states, attention, converage)
+            #states, converage = self._decoder.decode_step(states, attention, converage)
+            states = self._decoder.decode_step(states, attention)
             (h,c), dec_out = states
 
             h_output.append(h[0])
@@ -151,17 +154,18 @@ class Seq2SeqSumm(nn.Module):
         return outputs, attns
 
 class AttentionalLSTMDecoder(object):
-    def __init__(self, lstm, attn_w, projection, attention_projection, attn_wc, embedding):
+    # def __init__(self, lstm, attn_w, projection, attention_projection, attn_wc, embedding):
+    def __init__(self, lstm, attn_w, projection, embedding):
         super().__init__()
         self._lstm = lstm
         self._attn_w = attn_w
         self._projection = projection
-        self._attention_projection = attention_projection
-        self._attn_wc = attn_wc
+        # self._attention_projection = attention_projection
+        # self._attn_wc = attn_wc
         self._embedding = embedding
         
 
-    def __call__(self, attention, init_states, tar_lens):
+    def __call__(self, attention, init_states, target, tar_lens):
         step_states = init_states
         
         converage = None
@@ -171,27 +175,56 @@ class AttentionalLSTMDecoder(object):
         c_all = []
         loss_part_all = []
         #给sentence level的decoder输入标记这是第几句话的vec
+        target = target.transpose(0,1)
         for i in range(max(tar_lens)):  #感觉是在模拟time stamp
-
+            if (i!=0):
+                step_states = step_states[0], target[i-1].cuda()
+                # print(target[:][i-1].size())
             # tok = torch.tensor(special_word_num + i).expand(step_states[1].size()[0], 1)
-            step_states, converage, loss_part= self._step(step_states, attention, converage)
+            # step_states, converage, loss_part= self._step(step_states, attention, converage)
+            step_states = self._step(step_states, attention)
             (h,c), dec_out = step_states
 
             dec_out_all.append(dec_out)
             h_all.append(h[0])
             c_all.append(c[0])
-            loss_part_all.append(loss_part)
+            # loss_part_all.append(loss_part)
 
         #返回sentence level的所有dec_out
         dec_out_all = torch.stack(dec_out_all, dim=0).transpose(0,1)
         h_all = torch.stack(h_all, dim=0).transpose(0,1)
         c_all = torch.stack(c_all, dim=0).transpose(0,1)
-        loss_part_all = torch.stack(loss_part_all, dim=0).transpose(0,1)
-        
+        # loss_part_all = torch.stack(loss_part_all, dim=0).transpose(0,1)
         #返回sentence level的所有dec_out
-        return (dec_out_all, h_all, c_all), loss_part_all #这样就是batch×length×n_hidden了
+        return (dec_out_all, h_all, c_all) #这样就是batch×length×n_hidden了
 
-    def _step(self, states, attention, converage):
+    # def _step(self, states, attention, converage):
+    #     prev_states, prev_out = states
+    #     # lstm_in =  torch.cat([self._embedding(tok).squeeze(1), prev_out],dim=1)
+
+    #     states = self._lstm(prev_out, prev_states)
+    #     lstm_out = states[0][-1]
+    #     query = torch.mm(lstm_out, self._attn_w)
+    #     attention, attn_mask = attention
+    #     #增加返回loss的一部分
+    #     context, score, loss_part = step_attention(
+    #         query, attention, attention, converage, self._attention_projection, self._attn_wc, attn_mask)
+    #     if converage is None:
+    #         converage = score
+    #     else:
+    #         converage = converage + score
+    #     dec_out = self._projection(torch.cat([lstm_out, context], dim=1))
+
+    #     states = (states, dec_out)
+
+    #     return states, converage, loss_part
+
+    # def decode_step(self, states, attention, converage):
+    #     states, converage, _= self._step(states, attention, converage)
+        
+    #     return states, converage
+
+    def _step(self, states, attention):
         prev_states, prev_out = states
         # lstm_in =  torch.cat([self._embedding(tok).squeeze(1), prev_out],dim=1)
 
@@ -199,20 +232,21 @@ class AttentionalLSTMDecoder(object):
         lstm_out = states[0][-1]
         query = torch.mm(lstm_out, self._attn_w)
         attention, attn_mask = attention
-        #增加返回loss的一部分
-        context, score, loss_part = step_attention(
-            query, attention, attention, converage, self._attention_projection, self._attn_wc, attn_mask)
-        if converage is None:
-            converage = score
-        else:
-            converage = converage + score
-        dec_out = self._projection(torch.cat([lstm_out, context], dim=1))
 
+        #print("states\n", states)
+
+        #增加返回loss的一部分
+        # context, score, loss_part = step_attention(
+        #     query, attention, attention, attn_mask)
+        context, score = step_attention(query, attention, attention, attn_mask)
+
+        dec_out = self._projection(torch.cat([lstm_out, context], dim=1))
+        #print("dec_out\n", dec_out)
         states = (states, dec_out)
 
-        return states, converage, loss_part
+        return states
 
-    def decode_step(self, states, attention, converage):
-        states, converage, _= self._step(states, attention, converage)
+    def decode_step(self, states, attention):
+        states = self._step(states, attention)
         
-        return states, converage
+        return states

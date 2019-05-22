@@ -20,8 +20,8 @@ from training import get_basic_grad_fn, basic_validate
 from training import BasicPipeline, BasicTrainer
 
 from data import CnnDmDataset
-from batcher import coll_fn, prepro_fn
-from batcher import convert_batch, pretrain_batchify_fn
+from batcher import coll_fn, prepro_fn,coll_fn_pretrain,prepro_fn_pretrain
+from batcher import convert_batch, pretrain_batchify_fn, convert_batch_pretrain
 from batcher import BucketedGenerater
 
 from utils import sequence_loss
@@ -30,6 +30,7 @@ from utils import make_vocab, make_embedding
 
 from hierarchical_model import PretrainModel
 from gmem_occumpy import occumpy_mem
+from decoding import load_best_ckpt
 
 BUCKET_SIZE = 6400
 class MatchDataset(CnnDmDataset):
@@ -42,23 +43,22 @@ class MatchDataset(CnnDmDataset):
     def __getitem__(self, i):
         #改为返回source为原文,target为abstract,然后两个都是list？
         js_data = super().__getitem__(i)
-        art_sents, abs_sents = (
-            js_data['artile'], js_data['abstract'])
-        return art_sents, abs_sents
+        sent = (js_data['sent'])
+        return sent
 
 
 def build_batchers(word2id, cuda):
-    prepro = prepro_fn(args.max_word)
+    prepro = prepro_fn_pretrain(args.max_word)
     batchify = compose(
         pretrain_batchify_fn(PAD, START, END, EOA, cuda=cuda),
-        convert_batch(UNK, word2id)
+        convert_batch_pretrain(UNK, word2id)
     )  #这玩意竟然是倒着开始执行的？？？？？？
 
     train_loader = DataLoader(
         MatchDataset('train'), batch_size=BUCKET_SIZE,
         shuffle=True,
         num_workers=4 if cuda else 0,
-        collate_fn=coll_fn
+        collate_fn=coll_fn_pretrain
     )
     train_batcher = BucketedGenerater(train_loader, prepro, batchify,
                                       single_run=False, fork=True)
@@ -66,7 +66,7 @@ def build_batchers(word2id, cuda):
     val_loader = DataLoader(
         MatchDataset('val'), batch_size=BUCKET_SIZE,
         shuffle=False, num_workers=4 if cuda else 0,
-        collate_fn=coll_fn
+        collate_fn=coll_fn_pretrain
     )
     val_batcher = BucketedGenerater(val_loader, prepro, batchify,
                                     single_run=True, fork=True)
@@ -125,7 +125,10 @@ def pretrain(args):
     # configure training setting
     criterion, train_params = configure_training(
         'adam', args.lr, args.clip, args.decay, args.batch)
-    
+
+    abs_ckpt = load_best_ckpt(args.pretrain_path)
+    net.load_state_dict(abs_ckpt, strict=False) #只导入用到的参数
+
     val_fn = basic_validate(net, 1, criterion)
     grad_fn = get_basic_grad_fn(net, args.clip)
     optimizer = optim.Adam(net.parameters(), **train_params['optimizer'][1])
@@ -155,6 +158,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='pretrain of the model')
 
     parser.add_argument('--path', required=True, help='root of the model')
+    parser.add_argument('--pretrain_path', required=True, help='root of the model')
 
     parser.add_argument('--data_path', required=True, help='root of the dataset')
 
@@ -184,7 +188,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, action='store', default=1,
                         help='the training batch size')
 
-    parser.add_argument('--ckpt_freq', type=int, action='store', default=10000,
+    parser.add_argument('--ckpt_freq', type=int, action='store', default=5000,
         help='number of update steps for checkpoint and validation')
 
     parser.add_argument('--patience', type=int, action='store', default=4,
@@ -204,7 +208,7 @@ if __name__ == '__main__':
 
     print(args)
     
-    if (args.cuda == True):
-        occumpy_mem(args.cuda_device)
+    # if (args.cuda == True):
+    #     occumpy_mem(args.cuda_device)
 
     pretrain(args)

@@ -122,9 +122,14 @@ def pretrain(args):
     else:
         print("please provide pretrain_w2v")
         return 
+    
 
+    abs_ckpt = load_best_ckpt("whole_pretrain_seq2seq")
+    print(abs_ckpt)
+    net.load_state_dict(abs_ckpt) #只导入用到的参数
     abs_ckpt = load_best_ckpt(args.pretrain_path)
     net.load_state_dict(abs_ckpt, strict=False) #只导入用到的参数
+
 
     # configure training setting
     criterion, train_params = configure_training(
@@ -137,7 +142,18 @@ def pretrain(args):
 
     val_fn = basic_validate(net, 2, criterion)
     grad_fn = get_basic_grad_fn(net, args.clip)
-    optimizer = optim.Adam(net.parameters(), **train_params['optimizer'][1])
+
+
+    # for i in net._WordToSentLSTM.parameters():
+    #     i.requires_grad = False
+    # for i in net._SentToWordLSTM.parameters():
+    #     i.requires_grad = False
+    ignored_params = list(map(id, net._WordToSentLSTM.parameters())) + list(map(id, net._SentToWordLSTM.parameters()))
+    base_params = filter(lambda p: id(p) not in ignored_params, net.parameters())
+    different_lr_params = [{'params': base_params},
+                           {'params': net._WordToSentLSTM.parameters(), 'lr': 1e-4},
+                           {'params': net._SentToWordLSTM.parameters(), 'lr': 1e-4}]
+    optimizer = optim.Adam(different_lr_params, **train_params['optimizer'][1])
     scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True,
                                   factor=args.decay, min_lr=0,
                                   patience=args.lr_p)
@@ -202,7 +218,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch', type=int, action='store', default=4,
                         help='the training batch size')
 
-    parser.add_argument('--ckpt_freq', type=int, action='store', default=10000,
+    parser.add_argument('--ckpt_freq', type=int, action='store', default=5000,
         help='number of update steps for checkpoint and validation')
 
     parser.add_argument('--patience', type=int, action='store', default=4,
@@ -222,7 +238,7 @@ if __name__ == '__main__':
 
     print(args)
     
-    if (args.cuda == True):
-        occumpy_mem(args.cuda_device)
+    # if (args.cuda == True):
+    #     occumpy_mem(args.cuda_device)
 
     pretrain(args)

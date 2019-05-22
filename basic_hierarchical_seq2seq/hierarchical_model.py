@@ -69,22 +69,40 @@ class PretrainSeq2Seq(nn.Module):
         self._Seq2SeqSumm = Seq2SeqSumm(vocab_size, n_hidden, n_hidden, bidirectional, n_layer, dropout, embedding)
         self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
 
-    def forward(self, article_sents, article_lens, sent_lens, target, target_article_length, target_sentence_length):
+    def forward(self, article_sents, article_lens, sent_lens, target, tar_in, target_article_length, target_sentence_length):
         #   target为应当decoder出来的所有的句子集合，包括了EOA， target_article_length为每个文章对应的句子数,target_sentence_length为target每个句子的长度
         
         sent_vec, _ = self._WordToSentLSTM(article_sents, sent_lens)  #[batch, 256]，每个vec表示的是每句话的信息
         _, context_output = self._WordToSentLSTM(target, target_sentence_length)  #获取对应的decoder句子信息
 
-
         pad = 1e-8  #用来填充没有句子的地方的hidden        
         #根据上面那个[batch，256]，改道成一个文章数×句子长×256的矩阵 article_hidden_states !!!
         article_hidden_states = change_shape(sent_vec, article_lens, pad)
-        (sent_dec_out, _, _), _ = self._Seq2SeqSumm(article_hidden_states, article_lens, target_article_length)
-        sent_output = change_reshape([sent_dec_out], target_article_length)
-        sentence_output_states = sent_output[0]
-        
-        loss = torch.sum((context_output - sentence_output_states).mul(context_output - sentence_output_states)) / sentence_output_states.size()[0]
-        return loss
+
+        count = 0
+        target_hidden_states = torch.ones(len(target_article_length), max(target_article_length), 128) * pad
+        for i in range(len(target_article_length)):
+            for j in range(target_article_length[i]):
+                target_hidden_states[i][j][:] =  context_output[count]
+                count += 1
+
+        # print(list(target_hidden_states))
+        # print("context_output\n", context_output)
+        # target_hidden_states = change_shape(context_output, target_article_length, pad)
+
+        (sent_dec_out, sent_h_out, sent_c_out)= self._Seq2SeqSumm(article_hidden_states, article_lens, target_hidden_states, target_article_length)
+        sent_output = change_reshape([sent_dec_out, sent_h_out, sent_c_out], target_article_length)
+        sentence_output_states, sentence_hidden_states, sentence_context_states= sent_output[:]
+        #loss = torch.sum((context_output - sentence_output_states).mul(context_output - sentence_output_states)) / sentence_output_states.size()[0]
+        cos = torch.nn.CosineSimilarity(dim=1, eps=1e-6)
+        value = cos(sentence_output_states, context_output) * (-1)
+        #print(value.size())
+        loss = torch.sum(value) / sentence_output_states.size()[0] + 1
+
+        #获得句子的每个hidden以后，一生多 生成每个句子, 然后每个生成的具体句子跟原始的target做loss，返回loss
+        logit = self._SentToWordLSTM(sentence_output_states, tar_in, None, None)
+
+        return logit, loss
     
     def decode(self, article_sents, article_lens, sent_lens, max_sent, max_word):
         sent_vec, _ = self._WordToSentLSTM(article_sents, sent_lens)  #[batch, 256]，每个vec表示的是每句话的信息

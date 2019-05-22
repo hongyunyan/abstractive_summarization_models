@@ -186,3 +186,4 @@ def change_loss_shape(input, input_lens):
     mask = matrix < mask_matrix
     output = torch.masked_select(input, mask.cuda())
     return output
+

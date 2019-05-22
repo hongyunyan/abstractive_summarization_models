@@ -1,2 +1,2 @@
 rm -rf pretrain_abstractor
-python pretrain_model.py --path ./pretrain_abstractor --w2v word2vec/word2vec.128d.226k.bin --data_path ~/perfect_dataset 
+python pretrain_model.py --path ./pretrain_abstractor --w2v word2vec/word2vec.128d.226k.bin --data_path ~/perfect_sent_dataset --pretrain_path ./pretrain_seq2seq 

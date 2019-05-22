@@ -21,7 +21,7 @@ def get_basic_grad_fn(net, clip_grad, max_grad=5):
             [p for p in net.parameters() if p.requires_grad], clip_grad)  
         
         if max_grad is not None and grad_norm >= max_grad:
-            print('WARNING: Exploding Gradients {:.2f}'.format(grad_norm))
+            #print('WARNING: Exploding Gradients {:.2f}'.format(grad_norm))
             grad_norm = max_grad
         grad_log = {}
         grad_log['grad_norm'] = grad_norm
@@ -41,8 +41,9 @@ def compute_loss_pretrain_model(net, criterion, fw_args, loss_args):
 
 @curry
 def compute_loss_pretrain_seq2seq(net, criterion, fw_args, loss_args):
-    loss = net(*fw_args)
-    return loss
+    logit, loss = net(*fw_args)
+    loss_word = criterion(*((logit,) + loss_args))
+    return loss_word, loss
 
 @curry
 def val_step(loss_step, fw_args, loss_args):
@@ -55,8 +56,8 @@ def val_step(loss_step, fw_args, loss_args):
 def val_step_for_pretrain_seq2seq(loss_step, fw_args, loss_args):
     if (fw_args is None):
         return 0,0
-    loss = loss_step(fw_args, loss_args)
-    return 1, loss.item()
+    loss_word, loss_cos = loss_step(fw_args, loss_args)
+    return loss_word.size(0), loss_word.sum().item() + loss_cos
 
 @curry
 def basic_validate(net, type, criterion, val_batches):
@@ -129,19 +130,22 @@ class BasicPipeline(object):
             fw_args, bw_args = next(self._batches)
 
         net_out = self._net(*fw_args)  
-        log_dict = {}
+
         loss_args = self.get_loss_args(net_out, bw_args) #两个东西拼一下
 
         loss = self._criterion(*loss_args).mean()
         return loss
 
     def loss_computer_pretrain_seq2seq(self):
-        fw_args, _= next(self._batches)
+        fw_args, bw_args= next(self._batches)
         while (fw_args is None):
-            fw_args, _ = next(self._batches)
+            fw_args, bw_args = next(self._batches)
 
-        loss = self._net(*fw_args)  #34.31.30022
+        logit, loss_cos = self._net(*fw_args)  #34.31.30022
 
+        loss_args = self.get_loss_args(logit, bw_args) #两个东西拼一下
+
+        loss = self._criterion(*loss_args).mean() + loss_cos
         return loss
 
     def loss_computer_model(self):
@@ -165,7 +169,6 @@ class BasicPipeline(object):
             loss = self.loss_computer_pretrain_model()
         elif (self._type == 2):
             loss = self.loss_computer_pretrain_seq2seq() #34.31.30022
-            print(loss)
         else:
             loss = self.loss_computer_model()
 
@@ -267,18 +270,20 @@ class BasicTrainer(object):
 
     #感觉是连续符合n次新的val稳定大于best,就结束？
     def check_stop(self, val_metric):
-        if self._best_val is None:
-            self._best_val = val_metric
-        elif ((val_metric < self._best_val and self._val_mode == 'loss')
-              or (val_metric > self._best_val and self._val_mode == 'score')):
-            self._current_p = 0
-            self._best_val = val_metric
-        else:
-            self._current_p += 1
+        # if self._best_val is None:
+        #     self._best_val = val_metric
+        # elif ((val_metric < self._best_val and self._val_mode == 'loss')
+        #       or (val_metric > self._best_val and self._val_mode == 'score')):
+        #     self._current_p = 0
+        #     self._best_val = val_metric
+        # else:
+        #     self._current_p += 1
+        # return self._current_p >= self._patience
+        self._current_p += 1
         return self._current_p >= self._patience
 
     def train(self):
-        print_iter = 100
+        print_iter = 1
         try:
             start = time()
             iter_start = time()

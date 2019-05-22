@@ -12,6 +12,9 @@ from utils import reorder_sequence, special_word_num
 import time 
 
 
+def coll_fn_pretrain(data):
+    sents = data 
+    return sents
 
 def coll_fn(data):
     source_lists, target_lists = unzip(data)
@@ -33,6 +36,18 @@ def conver2id(unk, word2id, article_lists):
     word2id = defaultdict(lambda: unk, word2id)
     return [[[word2id[w] for w in sent] for sent in sent_lists ] for sent_lists in article_lists]
 
+
+def conver2id_pretrain(unk, word2id, article_lists):
+    word2id = defaultdict(lambda: unk, word2id)
+    return [[word2id[w] for w in sent] for sent in  article_lists[0]]
+
+@curry
+def prepro_fn_pretrain(max_len, batch):
+    sents = batch
+    sents = tokenize(max_len, sents)
+    batch = sents
+    return batch
+
 #输出一一对应的atricle和abstract的list
 @curry
 def prepro_fn(max_len, batch):
@@ -41,6 +56,15 @@ def prepro_fn(max_len, batch):
     sources = tokenize(max_len, sources)
     targets = tokenize(max_len, targets)
     batch = list(zip(sources, targets))
+    return batch
+
+@curry
+def convert_batch_pretrain(unk, word2id, batch):
+    #给没出现的字替换为unknown,然后对于原来输入的article和abs,生成读应的新版
+    sents = batch
+    sents = conver2id_pretrain(unk, word2id, sents)
+    batch = sents
+    #还是一个sources的list的list
     return batch
 
 @curry
@@ -76,25 +100,7 @@ def pad_batch_tensorize(inputs, pad, cuda=True):
 def pretrain_batchify_fn(pad, start, end,  eoa, data, cuda=True):
     #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
 
-    sources, targets = list(map(list, unzip(data)))
-    
-    #删除targets中abs长度大于20的文本
-    del_num = []
-    for i in range(len(sources)):
-        if ((len(targets[i]) > 20) or (len(sources[i])>50)):
-            del_num.append(i)
-
-    if (len(del_num) == len(sources)):
-        return None,None
-
-    for num in reversed(del_num):
-        del sources[num]
-        del targets[num]
-
-    source_sents = [sent for article in sources for sent in article]
-    target_sents = [sent for article in targets for sent in article]
-
-    sents = source_sents + target_sents 
+    sents = data
 
     tar_ins = [[start] + sent for sent in sents] 
     tar_outs = [sent + [end] for sent in sents]
@@ -126,15 +132,13 @@ def pretrain_seq2seq_batchify_fn(pad, start, end,  eoa, data, cuda=True):
         if (len(targets[i]) > 20):
             del_num.append(i)
 
-    # if (len(del_num) == len(sources)):
-    #     return None,None
-
     for num in reversed(del_num):
         del sources[num]
         del targets[num]
 
     source_article_len = [len(source) for source in sources]
     target_article_len = [len(target) + 1 for target in targets]
+    #target_article_len = [len(target) for target in targets]
 
     source_sent = [] 
     for source in sources:
@@ -144,19 +148,23 @@ def pretrain_seq2seq_batchify_fn(pad, start, end,  eoa, data, cuda=True):
     src_sent_len = [len(src) for src in source_sent]
 
     target_out = []
+    tar_in = []
     for target in targets: 
         for tar in target:
             target_out.append(tar + [end])
+            tar_in.append([start] + tar)
         target_out.append([eoa])
+        tar_in.append([start])
 
     target_sentence_length = [len(target) for target in target_out]
 
     source = pad_batch_tensorize(source_sent, pad, cuda)
     target = pad_batch_tensorize(target_out, pad, cuda)
+    tar_in = pad_batch_tensorize(tar_in, pad, cuda)
 
-    fw_args = (source, source_article_len, src_sent_len, target, target_article_len, target_sentence_length)
-
-    return fw_args, None
+    fw_args = (source, source_article_len, src_sent_len, target, tar_in, target_article_len, target_sentence_length)
+    loss_args = (target, )
+    return fw_args, loss_args
 
 
 @curry
