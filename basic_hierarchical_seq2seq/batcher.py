@@ -76,42 +76,43 @@ def pad_batch_tensorize(inputs, pad, cuda=True):
 def pretrain_batchify_fn(pad, start, end,  eoa, data, cuda=True):
     #我希望的这边的sources是一个大的list，里面包含了每个artical，然后每个article是一个list，包含了
 
-    sources, targets = list(map(list, unzip(data)))
-    
-    #删除targets中abs长度大于20的文本
-    del_num = []
-    for i in range(len(sources)):
-        if ((len(targets[i]) > 20) or (len(sources[i])>50)):
-            del_num.append(i)
-
-    if (len(del_num) == len(sources)):
-        return None,None
-
-    for num in reversed(del_num):
-        del sources[num]
-        del targets[num]
-
-    source_sents = [sent for article in sources for sent in article]
-    target_sents = [sent for article in targets for sent in article]
-
-    sents = source_sents + target_sents
+    sents = data
 
     tar_ins = [[start] + sent for sent in sents] 
     tar_outs = [sent + [end] for sent in sents]
 
+    sents.append([eoa])
+    tar_ins.append([start] + [eoa])
+    tar_outs.append([eoa])
+
     source_length = [len(sent) for sent in sents]
-    tar_length = [length + 1 for length in source_length]
 
     source = pad_batch_tensorize(sents, pad, cuda)
     tar_in = pad_batch_tensorize(tar_ins, pad, cuda)
     target = pad_batch_tensorize(tar_outs, pad, cuda)
 
-    fw_args = (source, source_length, tar_in, tar_length)
+    fw_args = (source, source_length, tar_in)
     loss_args = (target, )
 
     return fw_args, loss_args
 
+def conver2id_pretrain(unk, word2id, article_lists):
+    word2id = defaultdict(lambda: unk, word2id)
+    return [[word2id[w] for w in sent] for sent in  article_lists[0]]
 
+def coll_fn_pretrain(data):
+    sents = data 
+    return sents
+
+
+@curry
+def convert_batch_pretrain(unk, word2id, batch):
+    #给没出现的字替换为unknown,然后对于原来输入的article和abs,生成读应的新版
+    sents = batch
+    sents = conver2id_pretrain(unk, word2id, sents)
+    batch = sents
+    #还是一个sources的list的list
+    return batch
 
 @curry
 def batchify_fn(pad, start, end,  eoa, data, cuda=True):
