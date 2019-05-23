@@ -44,6 +44,13 @@ def prepro_fn(max_len, batch):
     return batch
 
 @curry
+def prepro_fn_pretrain(max_len, batch):
+    sents = tokenize(max_len, batch)
+    batch = sents
+    return batch
+
+
+@curry
 def convert_batch(unk, word2id, batch):
     #给没出现的字替换为unknown,然后对于原来输入的article和abs,生成读应的新版
     sources, targets = map(list, unzip(batch))

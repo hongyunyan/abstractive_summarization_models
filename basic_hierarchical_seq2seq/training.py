@@ -217,7 +217,7 @@ class BasicTrainer(object):
         return self._current_p >= self._patience
 
     def train(self):
-        print_iter = 100
+        print_iter = 1000
         try:
             start = time()
             iter_start = time()

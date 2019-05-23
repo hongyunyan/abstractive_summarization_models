@@ -157,7 +157,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--data_path', required=True, help='root of the dataset')
 
-    parser.add_argument('--vsize', type=int, action='store', default=50000,
+    parser.add_argument('--vsize', type=int, action='store', default=30000,
                         help='vocabulary size')
     parser.add_argument('--emb_dim', type=int, action='store', default=128,
                         help='the dimension of word embedding')
@@ -180,13 +180,13 @@ if __name__ == '__main__':
 
     parser.add_argument('--max_word', type=int, action='store', default=100,
                         help='maximun words in a single article sentence')
-    parser.add_argument('--batch', type=int, action='store', default=4,
+    parser.add_argument('--batch', type=int, action='store', default=1,
                         help='the training batch size')
 
     parser.add_argument('--ckpt_freq', type=int, action='store', default=10000,
         help='number of update steps for checkpoint and validation')
 
-    parser.add_argument('--patience', type=int, action='store', default=4,
+    parser.add_argument('--patience', type=int, action='store', default=2,
                         help='patience for early stopping')
     parser.add_argument('--lr_p', type=int, action='store', default=0,
                         help='patience for learning rate decay')
@@ -203,7 +203,7 @@ if __name__ == '__main__':
 
     print(args)
     
-    if (args.cuda == True):
-        occumpy_mem(args.cuda_device)
+    # if (args.cuda == True):
+    #     occumpy_mem(args.cuda_device)
 
     pretrain(args)

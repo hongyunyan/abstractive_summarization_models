@@ -39,7 +39,7 @@ class PretrainModel(nn.Module):
         self._WordToSentLSTM = WordToSentLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
         self._SentToWordLSTM = SentToWordLSTM(emb_dim, n_hidden, n_layer, bidirectional, dropout, vocab_size, None, embedding)
 
-    def forward(self, source_sents, source_length, tar_inputs, target_length):
+    def forward(self, source_sents, source_length, tar_inputs):
         
         sent_output = self._WordToSentLSTM(source_sents, source_length)  
         context_output = self._dec_h(sent_output)
